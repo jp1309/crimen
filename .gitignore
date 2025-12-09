@@ -1,0 +1,9 @@
+# Excluir solo archivos de Excel pesados
+*.xlsx
+
+# Excluir archivos de sistema y temporales
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+*.tmp
