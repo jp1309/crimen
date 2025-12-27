@@ -1,5 +1,5 @@
-# Excluir solo archivos de Excel pesados
-*.xlsx
+# Permitir archivos de Excel para el pipeline automatizado
+!*.xlsx
 
 # Excluir archivos de sistema y temporales
 __pycache__/
