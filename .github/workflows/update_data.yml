@@ -1,0 +1,45 @@
+name: Actualizar Dashboard al subir Excel
+
+on:
+  push:
+    paths:
+      - '**.xlsx'
+  workflow_dispatch: # Permite ejecutarlo manualmente
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas openpyxl unidecode numpy
+
+      - name: Ejecutar Consolidación y Limpieza
+        run: |
+          python consolidar_y_limpiar.py
+
+      - name: Configurar Git y Subir Cambios
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add homicidios_clean.csv homicidios_consolidado.csv
+          # Solo hacer commit si hubo cambios en los CSV
+          if git diff --staged --quiet; then
+            echo "No hay cambios en los datos."
+          else
+            git commit -m "Auto-update: Datos actualizados desde Excel [GitHub Action]"
+            git push
+          fi
