@@ -34,7 +34,7 @@ crimen/
 └── Datos originales (Excel):
     ├── mdi_homicidios_intencionales_dd_2014_2024.xlsx (93MB)
     ├── mdi_homicidios_intencionales_pm_2014_2024.xlsx (7.4MB)
-    └── mdi_homicidiosintencionalse_pm_2025_enero_octubre.xlsx (1.2MB)
+    └── mdi_homicidiosintencionalse_pm_2025_enero_noviembre.xlsx (1.2MB)
 ```
 
 ---
@@ -279,7 +279,7 @@ Ministerio del Interior del Ecuador (MDI)
 ### **Archivos Base**
 1. `mdi_homicidios_intencionales_dd_2014_2024.xlsx` (93 MB)
 2. `mdi_homicidios_intencionales_pm_2014_2024.xlsx` (7.4 MB)
-3. `mdi_homicidiosintencionalse_pm_2025_enero_octubre.xlsx` (1.2 MB)
+3. `mdi_homicidiosintencionalse_pm_2025_enero_noviembre.xlsx` (1.2 MB)
 
 ### **Procesamiento**
 Los datos fueron consolidados y limpiados creando:
