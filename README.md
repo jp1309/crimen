@@ -58,3 +58,21 @@ Esta sección describe la arquitectura del proyecto para facilitar el mantenimie
 *   **Frontend:** Vanilla JS, Chart.js, Leaflet, Tailwind CSS.
 *   **Backend (ETL):** Python (Pandas, Numpy, Unidecode, Openpyxl).
 *   **Infraestructura:** GitHub Actions & GitHub Pages.
+
+---
+
+## 🔮 Guía de Mantenimiento Futuro
+
+### Caso 1: Cierre del Año 2025 (Enero 2026)
+Cuando tengas el archivo final con todos los datos de 2025 (ej. `Homicidios_2025_Completo.xlsx`):
+
+1.  **Limpiar:** Elimina o mueve a una carpeta de respaldo el archivo parcial anterior (ej. `2025_11_...xlsx`).
+2.  **Cargar:** Pon el nuevo archivo completo en la raíz. Asegúrate de que el nombre tenga "2025".
+3.  **Ejecutar:** Correr `python consolidar_y_limpiar.py`. El script detectará el único archivo 2025 presente y reconstruirá el CSV.
+4.  **Verificar:** Correr `python verify_data.py` (debería haber ~0 diferencias).
+
+### Caso 2: Transición al Año 2026
+Cuando empieces a recibir datos de 2026:
+
+*   **Opción Recomendada:** Fusionar manualmente el archivo 2025 completo con el histórico `2014-2024` para crear un nuevo archivo maestro `mdi_homicidios_intencionales_pm_2014_2025.xlsx`.
+*   **Ajuste de Script:** Si decides mantener 3 archivos separados (Histórico + 2025 + 2026), se deberá editar `consolidar_y_limpiar.py` para que lea y concatene tres fuentes en lugar de dos.
