@@ -276,7 +276,7 @@ function renderTimeline(data) {
     let datasets = [];
     let labels = [];
     const minYear = 2014;
-    const maxYear = 2025;
+    const maxYear = new Date().getFullYear();
 
     if (isSingleYear) {
         for (let i = 1; i <= 12; i++) {

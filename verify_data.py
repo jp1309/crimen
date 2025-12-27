@@ -6,7 +6,14 @@ def verify_data_integrity():
     
     # 1. Load Raw Sources
     path_2014_2024 = "mdi_homicidios_intencionales_pm_2014_2024.xlsx"
-    path_2025 = "mdi_homicidiosintencionalse_pm_2025_enero_noviembre.xlsx"
+    # Detectar el archivo 2025 más reciente
+    excel_2025 = [f for f in os.listdir('.') if f.startswith("mdi_homicidiosintencionalse_pm_2025") and f.endswith(".xlsx")]
+    meses_map = {'enero':1,'febrero':2,'marzo':3,'abril':4,'mayo':5,'junio':6,'julio':7,'agosto':8,'septiembre':9,'octubre':10,'noviembre':11,'diciembre':12}
+    
+    if excel_2025:
+        path_2025 = max(excel_2025, key=lambda x: meses_map.get(x.lower().replace(".xlsx","").split("_")[-1], 0))
+    else:
+        path_2025 = "No encontrado"
     path_clean = "homicidios_clean.csv"
 
     # Count 2014-2024
