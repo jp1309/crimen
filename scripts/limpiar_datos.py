@@ -48,8 +48,13 @@ def clean_data(input_path, output_path):
     df['fecha_infraccion'] = pd.to_datetime(df['fecha_infraccion'], errors='coerce')
     df['anio'] = df['fecha_infraccion'].dt.year
     df['mes'] = df['fecha_infraccion'].dt.month
-    df['dia_semana'] = df['fecha_infraccion'].dt.day_name(locale='es_ES') \
-        if 'day_name' in dir(df['fecha_infraccion'].dt) else df['fecha_infraccion'].dt.dayofweek
+
+    # Mapear día de la semana a español (sin depender de locale del sistema)
+    dias_es = {
+        'Monday': 'Lunes', 'Tuesday': 'Martes', 'Wednesday': 'Miercoles',
+        'Thursday': 'Jueves', 'Friday': 'Viernes', 'Saturday': 'Sabado', 'Sunday': 'Domingo'
+    }
+    df['dia_semana'] = df['fecha_infraccion'].dt.day_name().map(dias_es)
 
     # 4. Procesar edad (puede contener texto)
     print("Procesando valores numéricos...")
