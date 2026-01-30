@@ -276,7 +276,8 @@ function renderTimeline(data) {
     let datasets = [];
     let labels = [];
     const minYear = 2014;
-    const maxYear = new Date().getFullYear();
+    // Usar el año máximo real de los datos, no el año actual del sistema
+    const maxYear = Math.max(...rawData.map(d => d.anio).filter(y => y));
 
     if (isSingleYear) {
         for (let i = 1; i <= 12; i++) {

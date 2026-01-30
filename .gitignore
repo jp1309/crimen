@@ -1,9 +1,23 @@
-# Permitir archivos de Excel para el pipeline automatizado
-!*.xlsx
-
-# Excluir archivos de sistema y temporales
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+venv/
+.venv/
+
+# Sistema
 .DS_Store
 Thumbs.db
 *.tmp
+~$*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos Excel temporales (los que empiezan con ~$)
+~$*.xlsx
