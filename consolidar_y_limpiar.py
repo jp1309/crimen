@@ -18,13 +18,20 @@ def consolidar():
     def get_month_value(filename):
         # Intentar extraer mes del nombre
         clean_name = filename.lower().replace(".xlsx", "")
-        parts = clean_name.replace("_", " ").split() 
-        
-        # Buscar nombre de mes explícito
+        parts = clean_name.replace("_", " ").split()
+
+        # Prioridad máxima: archivos que contengan "enero" Y "diciembre" (año completo)
+        if 'enero' in parts and 'diciembre' in parts:
+            return 13  # Valor mayor que cualquier mes individual
+
+        # Buscar nombre de mes explícito (tomar el más alto si hay varios)
+        max_month = 0
         for part in parts:
-            if part in meses_map:
-                return meses_map[part]
-        
+            if part in meses_map and meses_map[part] > max_month:
+                max_month = meses_map[part]
+        if max_month > 0:
+            return max_month
+
         # Si no hay nombre, buscar número (ej: 2025_11 -> 11)
         candidate_month = 0
         for part in parts:
@@ -34,7 +41,7 @@ def consolidar():
                     candidate_month = val
         return candidate_month
 
-    # Tomar el que tenga el mes más alto
+    # Tomar el que tenga el mes más alto (o año completo = 13)
     archivo_nuevo_2025 = max(archivos, key=get_month_value)
     archivo_historico = "mdi_homicidios_intencionales_pm_2014_2024.xlsx"
     
