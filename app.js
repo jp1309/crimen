@@ -271,11 +271,15 @@ function renderTimeline(data) {
         '#ec4899', '#06b6d4', '#8b5cf6', '#14b8a6', '#f59e0b', '#10b981'
     ];
 
-    // Build monthly labels for the selected range
+    // Build monthly labels for the selected range, stopping at the last month with data
+    const maxDataYear = Math.max(...rawData.map(d => d.anio).filter(y => y));
+    const maxDataMonth = Math.max(...rawData.filter(d => d.anio === maxDataYear).map(d => d.mes).filter(m => m));
+
     const labels = [];
-    const monthKeys = []; // "YYYY-M" keys for counting
+    const monthKeys = [];
     for (let y = yearFrom; y <= yearTo; y++) {
         for (let m = 1; m <= 12; m++) {
+            if (y === maxDataYear && m > maxDataMonth) break;
             labels.push(`${getMonthName(m)} ${y}`);
             monthKeys.push(`${y}-${m}`);
         }
