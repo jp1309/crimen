@@ -106,51 +106,83 @@ def smart_read_excel(path, desc):
         return pd.DataFrame()
 
 
+def detectar_archivos():
+    """
+    Detecta automáticamente el histórico y el archivo más reciente en data/raw.
+    - Histórico: archivo que cubre el rango más largo (detectado por tener dos años en el nombre, ej: 2014_2025)
+    - Reciente: archivo con el año más alto y mes más completo
+    """
+    archivos = [f for f in os.listdir(DATA_RAW)
+                if f.endswith(".xlsx") and not f.startswith("~$")]
+
+    # Separar histórico (nombre con dos años distintos, ej: 2014_2025) de archivos anuales parciales
+    import re
+    historico = None
+    parciales = []
+
+    for f in archivos:
+        años = re.findall(r'20\d{2}', f)
+        if len(años) >= 2 and años[0] != años[-1]:
+            # Tiene dos años distintos → es el histórico; quedarse con el de año final más alto
+            if historico is None or int(re.findall(r'20\d{2}', f)[-1]) > int(re.findall(r'20\d{2}', historico)[-1]):
+                historico = f
+        else:
+            parciales.append(f)
+
+    # Si no hay histórico separado, usar todos los archivos como parciales
+    if historico is None:
+        parciales = archivos
+
+    # Del resto, tomar el de año más reciente y mes más completo
+    def sort_key(f):
+        años = re.findall(r'20\d{2}', f)
+        año_max = max(int(a) for a in años) if años else 0
+        return (año_max, get_month_value(f))
+
+    archivo_reciente = max(parciales, key=sort_key) if parciales else None
+
+    return historico, archivo_reciente
+
+
 def consolidar():
     """Función principal de consolidación."""
 
-    # Detectar archivos Excel 2025 en data/raw
-    archivos = [f for f in os.listdir(DATA_RAW)
-                if "2025" in f and f.endswith(".xlsx") and not f.startswith("~$")]
+    historico, archivo_reciente = detectar_archivos()
 
-    if not archivos:
-        print("Error: No se encontró ningún archivo Excel de 2025 en data/raw/")
+    if not historico and not archivo_reciente:
+        print("Error: No se encontró ningún archivo Excel en data/raw/")
         return False
-
-    # Seleccionar el archivo más completo
-    archivo_nuevo_2025 = max(archivos, key=get_month_value)
-    archivo_historico = "mdi_homicidios_intencionales_pm_2014_2024.xlsx"
 
     print("=" * 50)
     print("CONSOLIDACIÓN DE DATOS DE HOMICIDIOS")
     print("=" * 50)
-    print(f"Histórico: {archivo_historico}")
-    print(f"Datos 2025: {archivo_nuevo_2025}")
+    print(f"Histórico:  {historico or '(ninguno)'}")
+    print(f"Reciente:   {archivo_reciente or '(ninguno)'}")
     print()
 
     try:
         # 1. Cargar histórico
         df_hist = smart_read_excel(
-            os.path.join(DATA_RAW, archivo_historico),
-            "Histórico 2014-2024"
-        )
+            os.path.join(DATA_RAW, historico),
+            f"Histórico ({historico})"
+        ) if historico else pd.DataFrame()
 
-        # 2. Cargar nuevo archivo 2025
-        df_2025 = smart_read_excel(
-            os.path.join(DATA_RAW, archivo_nuevo_2025),
-            "Datos 2025"
-        )
+        # 2. Cargar archivo reciente (puede ser año en curso)
+        df_reciente = smart_read_excel(
+            os.path.join(DATA_RAW, archivo_reciente),
+            f"Reciente ({archivo_reciente})"
+        ) if archivo_reciente else pd.DataFrame()
 
-        if df_hist.empty and df_2025.empty:
+        if df_hist.empty and df_reciente.empty:
             print("Error: No hay datos para procesar.")
             return False
 
         # 3. Consolidar
         print(f"\nUniendo registros...")
         print(f"  Histórico: {len(df_hist):,} registros")
-        print(f"  2025:      {len(df_2025):,} registros")
+        print(f"  Reciente:  {len(df_reciente):,} registros")
 
-        df_consolidado = pd.concat([df_hist, df_2025], ignore_index=True)
+        df_consolidado = pd.concat([df_hist, df_reciente], ignore_index=True)
         print(f"  Total:     {len(df_consolidado):,} registros")
 
         # Guardar archivo intermedio
@@ -163,6 +195,7 @@ def consolidar():
         print("LIMPIEZA DE DATOS")
         print("=" * 50)
 
+        sys.path.insert(0, PROJECT_ROOT)
         from scripts import limpiar_datos
         limpiar_datos.clean_data(output_consolidado, OUTPUT_CLEAN)
 
