@@ -46,27 +46,11 @@ function switchView(viewId) {
     document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active-tab'));
     document.getElementById(`btn-${viewId}`).classList.add('active-tab');
 
-    // Context-Aware Filter Adjustments
-    const yearSelect = document.getElementById('filter-year');
-    if (yearSelect) {
-        // Reset - show all options first
-        Array.from(yearSelect.options).forEach(opt => opt.hidden = false);
-
-        if (viewId === 'map') {
-            const safeYears = ['2023', '2024', '2025'];
-
-            // Force selection to a safe year if current is invalid (including 'all')
-            if (!safeYears.includes(yearSelect.value)) {
-                yearSelect.value = '2025';
-            }
-
-            // Hide unsafe years AND 'all' option
-            Array.from(yearSelect.options).forEach(opt => {
-                if (!safeYears.includes(opt.value)) {
-                    opt.hidden = true;
-                }
-            });
-        }
+    // Context-Aware Filter Adjustments for map: limit to a single recent year
+    if (viewId === 'map') {
+        const maxYear = Math.max(...rawData.map(d => d.anio).filter(y => y));
+        document.getElementById('filter-year-from').value = maxYear;
+        document.getElementById('filter-year-to').value = maxYear;
     }
 
     // Re-render
@@ -82,21 +66,41 @@ function toggleGeoRank(mode) {
 // Filters Logic
 // --------------------------------------------------------
 function populateFilters() {
-    const years = [...new Set(rawData.map(d => d.anio))].sort((a, b) => b - a);
+    const years = [...new Set(rawData.map(d => d.anio))].filter(Boolean).sort((a, b) => a - b);
+    const minYear = years[0];
+    const maxYear = years[years.length - 1];
+
     const provinces = [...new Set(rawData.map(d => d.provincia))].filter(Boolean).sort();
-    // Cantons - initially load all
     const cantons = [...new Set(rawData.map(d => d.canton))].filter(Boolean).sort();
 
-    fillSelect('filter-year', years);
+    // Populate year-from and year-to with all available years
+    const fromSel = document.getElementById('filter-year-from');
+    const toSel = document.getElementById('filter-year-to');
+    fromSel.innerHTML = '';
+    toSel.innerHTML = '';
+    years.forEach(y => {
+        fromSel.appendChild(new Option(y, y));
+        toSel.appendChild(new Option(y, y));
+    });
+    // Default: show last 2 years
+    const defaultFrom = Math.max(minYear, maxYear - 1);
+    fromSel.value = defaultFrom;
+    toSel.value = maxYear;
+
     fillSelect('filter-province', provinces);
     fillSelect('filter-canton', cantons);
 
-    // General listener for updates
     document.querySelectorAll('select').forEach(s => {
         s.addEventListener('change', (e) => {
-            // If province changed, update cantons first
             if (e.target.id === 'filter-province') {
                 updateCantonOptions();
+            }
+            // Ensure from <= to
+            if (e.target.id === 'filter-year-from' && parseInt(fromSel.value) > parseInt(toSel.value)) {
+                toSel.value = fromSel.value;
+            }
+            if (e.target.id === 'filter-year-to' && parseInt(toSel.value) < parseInt(fromSel.value)) {
+                fromSel.value = toSel.value;
             }
             updateDashboard();
         });
@@ -142,24 +146,22 @@ function updateCantonOptions() {
 }
 
 function resetFilters() {
-    // Reset Year & Month
-    document.getElementById('filter-year').value = 'all';
-    document.getElementById('filter-month').value = 'all';
+    const years = [...new Set(rawData.map(d => d.anio))].filter(Boolean).sort((a, b) => a - b);
+    const maxYear = years[years.length - 1];
+    const defaultFrom = Math.max(years[0], maxYear - 1);
+    document.getElementById('filter-year-from').value = defaultFrom;
+    document.getElementById('filter-year-to').value = maxYear;
 
-    // Reset Multi-selects (Province, Canton, Age, Sex)
     const selects = ['filter-province', 'filter-canton', 'filter-age', 'filter-sex'];
     selects.forEach(id => {
         const sel = document.getElementById(id);
         if (sel) {
             Array.from(sel.options).forEach(opt => opt.selected = false);
-            if (sel.options.length > 0) sel.options[0].selected = true; // Select 'Todos'
+            if (sel.options.length > 0) sel.options[0].selected = true;
         }
     });
 
-    // Reset Canton logic dependent on Province
     updateCantonOptions();
-
-    // Trigger update
     updateDashboard();
 }
 
@@ -180,10 +182,9 @@ function fillSelect(id, values) {
 }
 
 function getFilteredData() {
-    const fYear = document.getElementById('filter-year').value;
-    const fMonth = document.getElementById('filter-month').value;
+    const fYearFrom = parseInt(document.getElementById('filter-year-from').value);
+    const fYearTo = parseInt(document.getElementById('filter-year-to').value);
 
-    // Multi-select inputs
     const provinceSelect = document.getElementById('filter-province');
     const cantonSelect = document.getElementById('filter-canton');
     const ageSelect = document.getElementById('filter-age');
@@ -195,24 +196,13 @@ function getFilteredData() {
     const selectedSex = Array.from(sexSelect.selectedOptions).map(o => o.value);
 
     return rawData.filter(d => {
-        // Year & Month (Single Select)
-        if (fYear !== 'all' && d.anio != fYear) return false;
-        if (fMonth !== 'all' && d.mes != fMonth) return false;
-
-        // Province (Multi Select)
+        if (d.anio < fYearFrom || d.anio > fYearTo) return false;
         if (!selectedProvs.includes('all') && !selectedProvs.includes(d.provincia)) return false;
-
-        // Canton (Multi Select)
         if (!selectedCants.includes('all') && !selectedCants.includes(d.canton)) return false;
-
-        // Age (Multi Select)
         const ageVal = d.rango_edad || 'DESCONOCIDO';
         if (!selectedAges.includes('all') && !selectedAges.includes(ageVal)) return false;
-
-        // Sex (Multi Select)
         const sexVal = d.sexo || 'DESCONOCIDO';
         if (!selectedSex.includes('all') && !selectedSex.includes(sexVal)) return false;
-
         return true;
     });
 }
@@ -251,6 +241,9 @@ function updateDashboard() {
 function renderTimeline(data) {
     const ctx = document.getElementById('chart-timeline').getContext('2d');
 
+    const yearFrom = parseInt(document.getElementById('filter-year-from').value);
+    const yearTo = parseInt(document.getElementById('filter-year-to').value);
+
     const provinceSelect = document.getElementById('filter-province');
     const cantonSelect = document.getElementById('filter-canton');
     const ageSelect = document.getElementById('filter-age');
@@ -260,8 +253,6 @@ function renderTimeline(data) {
     const selectedCants = Array.from(cantonSelect.selectedOptions).map(opt => opt.value);
     const selectedAges = Array.from(ageSelect.selectedOptions).map(opt => opt.value);
     const selectedSex = Array.from(sexSelect.selectedOptions).map(opt => opt.value);
-
-    const isSingleYear = document.getElementById('filter-year').value !== 'all';
 
     const comparingProvinces = selectedProvs.length > 1 || (selectedProvs.length === 1 && !selectedProvs.includes('all'));
     const comparingCantons = selectedCants.length > 1 || (selectedCants.length === 1 && !selectedCants.includes('all'));
@@ -273,131 +264,97 @@ function renderTimeline(data) {
         '#ec4899', '#06b6d4', '#8b5cf6', '#14b8a6', '#f59e0b', '#10b981'
     ];
 
-    let datasets = [];
-    let labels = [];
-    const minYear = 2014;
-    // Usar el año máximo real de los datos, no el año actual del sistema
-    const maxYear = Math.max(...rawData.map(d => d.anio).filter(y => y));
-
-    if (isSingleYear) {
-        for (let i = 1; i <= 12; i++) {
-            labels.push(getMonthName(i));
-        }
-    } else {
-        for (let y = minYear; y <= maxYear; y++) {
-            labels.push(y.toString());
+    // Build monthly labels for the selected range
+    const labels = [];
+    const monthKeys = []; // "YYYY-M" keys for counting
+    for (let y = yearFrom; y <= yearTo; y++) {
+        for (let m = 1; m <= 12; m++) {
+            labels.push(`${getMonthName(m)} ${y}`);
+            monthKeys.push(`${y}-${m}`);
         }
     }
 
     function createDataset(label, subsetData, colorIdx) {
         const counts = {};
         subsetData.forEach(d => {
-            let key = isSingleYear ? d.mes : d.anio;
+            const key = `${d.anio}-${d.mes}`;
             counts[key] = (counts[key] || 0) + 1;
         });
-
-        let values = [];
-        if (isSingleYear) {
-            for (let i = 1; i <= 12; i++) {
-                values.push(counts[i] || 0);
-            }
-        } else {
-            for (let y = minYear; y <= maxYear; y++) {
-                values.push(counts[y] || 0);
-            }
-        }
-
         return {
             label: label,
-            data: values,
+            data: monthKeys.map(k => counts[k] || 0),
             borderColor: colors[colorIdx % colors.length],
             backgroundColor: colors[colorIdx % colors.length] + '20',
             tension: 0.3,
             fill: false,
             spanGaps: false,
-            borderWidth: 2
+            borderWidth: 2,
+            pointRadius: monthKeys.length <= 24 ? 3 : 0,
+            pointHoverRadius: 5
         };
     }
 
+    let datasets = [];
+
     if (comparingProvinces && !comparingCantons) {
-        const targets = selectedProvs.filter(p => p !== 'all');
-        targets.forEach((target, idx) => {
-            const subset = data.filter(d => d.provincia === target);
-            datasets.push(createDataset(titleCase(target), subset, idx));
+        selectedProvs.filter(p => p !== 'all').forEach((target, idx) => {
+            datasets.push(createDataset(titleCase(target), data.filter(d => d.provincia === target), idx));
         });
-    }
-    else if (comparingCantons) {
-        const targets = selectedCants.filter(c => c !== 'all');
-        targets.forEach((target, idx) => {
-            const subset = data.filter(d => d.canton === target);
-            datasets.push(createDataset(titleCase(target), subset, idx));
+    } else if (comparingCantons) {
+        selectedCants.filter(c => c !== 'all').forEach((target, idx) => {
+            datasets.push(createDataset(titleCase(target), data.filter(d => d.canton === target), idx));
         });
-    }
-    else if (comparingAges) {
-        const targets = selectedAges.filter(a => a !== 'all');
-        targets.forEach((target, idx) => {
-            const subset = data.filter(d => (d.rango_edad || 'DESCONOCIDO') === target);
-            datasets.push(createDataset(target, subset, idx));
+    } else if (comparingAges) {
+        selectedAges.filter(a => a !== 'all').forEach((target, idx) => {
+            datasets.push(createDataset(target, data.filter(d => (d.rango_edad || 'DESCONOCIDO') === target), idx));
         });
-    }
-    else if (comparingSex) {
-        const targets = selectedSex.filter(s => s !== 'all');
-        targets.forEach((target, idx) => {
-            const subset = data.filter(d => (d.sexo || 'DESCONOCIDO') === target);
-            datasets.push(createDataset(target, subset, idx));
+    } else if (comparingSex) {
+        selectedSex.filter(s => s !== 'all').forEach((target, idx) => {
+            datasets.push(createDataset(target, data.filter(d => (d.sexo || 'DESCONOCIDO') === target), idx));
         });
-    }
-    else {
+    } else {
         const counts = {};
         data.forEach(d => {
-            let key = isSingleYear ? d.mes : d.anio;
+            const key = `${d.anio}-${d.mes}`;
             counts[key] = (counts[key] || 0) + 1;
         });
-
-        let values = [];
-        if (isSingleYear) {
-            for (let i = 1; i <= 12; i++) {
-                values.push(counts[i] || 0);
-            }
-        } else {
-            for (let y = minYear; y <= maxYear; y++) {
-                values.push(counts[y] || 0);
-            }
-        }
-
         datasets.push({
             label: 'Total Homicidios',
-            data: values,
+            data: monthKeys.map(k => counts[k] || 0),
             borderColor: '#22d3ee',
             backgroundColor: 'rgba(34, 211, 238, 0.1)',
             tension: 0.3,
             fill: true,
             spanGaps: false,
-            borderWidth: 2
+            borderWidth: 2,
+            pointRadius: monthKeys.length <= 24 ? 3 : 0,
+            pointHoverRadius: 5
         });
     }
 
     destroyChart('timeline');
 
     const chartOptions = getChartOptions('Evolución');
+
+    // Rotate x-axis labels when many months are shown
+    chartOptions.scales.x.ticks = {
+        color: '#94a3b8',
+        maxRotation: 45,
+        autoSkip: true,
+        maxTicksLimit: 24
+    };
+
     if (datasets.length > 1) {
         chartOptions.plugins.legend = {
             display: true,
             position: 'top',
-            labels: {
-                color: 'white',
-                usePointStyle: true,
-                padding: 15
-            }
+            labels: { color: 'white', usePointStyle: true, padding: 15 }
         };
     }
 
     chartInstances.timeline = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: labels,
-            datasets: datasets
-        },
+        data: { labels, datasets },
         options: chartOptions
     });
 }

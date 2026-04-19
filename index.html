@@ -81,32 +81,18 @@
         <!-- Global Filters (Sticky) -->
         <div class="glass-card mb-8 p-4 rounded-xl sticky top-20 z-40 bg-slate-900/90 backdrop-blur">
             <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
-                <!-- Columna 1: Tiempo (Año y Mes apilados) -->
+                <!-- Columna 1: Rango de tiempo -->
                 <div class="flex flex-col gap-2">
                     <div>
-                        <label class="block text-[10px] uppercase text-gray-400 font-bold">Año</label>
-                        <select id="filter-year"
+                        <label class="block text-[10px] uppercase text-gray-400 font-bold">Desde</label>
+                        <select id="filter-year-from"
                             class="w-full bg-slate-800 border-none rounded-lg text-xs px-2 py-1 focus:ring-1 focus:ring-cyan-500">
-                            <option value="all">Todos</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-[10px] uppercase text-gray-400 font-bold">Mes</label>
-                        <select id="filter-month"
+                        <label class="block text-[10px] uppercase text-gray-400 font-bold">Hasta</label>
+                        <select id="filter-year-to"
                             class="w-full bg-slate-800 border-none rounded-lg text-xs px-2 py-1 focus:ring-1 focus:ring-cyan-500">
-                            <option value="all">Todos</option>
-                            <option value="1">Ene</option>
-                            <option value="2">Feb</option>
-                            <option value="3">Mar</option>
-                            <option value="4">Abr</option>
-                            <option value="5">May</option>
-                            <option value="6">Jun</option>
-                            <option value="7">Jul</option>
-                            <option value="8">Ago</option>
-                            <option value="9">Sep</option>
-                            <option value="10">Oct</option>
-                            <option value="11">Nov</option>
-                            <option value="12">Dic</option>
                         </select>
                     </div>
                 </div>
