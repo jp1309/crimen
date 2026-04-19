@@ -46,11 +46,14 @@ function switchView(viewId) {
     document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active-tab'));
     document.getElementById(`btn-${viewId}`).classList.add('active-tab');
 
-    // Context-Aware Filter Adjustments for map: limit to a single recent year
+    // Context-Aware Filter Adjustments for map: limit to most recent year
     if (viewId === 'map') {
         const maxYear = Math.max(...rawData.map(d => d.anio).filter(y => y));
+        const maxDataMonth = Math.max(...rawData.filter(d => d.anio === maxYear).map(d => d.mes).filter(m => m));
         document.getElementById('filter-year-from').value = maxYear;
+        document.getElementById('filter-month-from').value = 1;
         document.getElementById('filter-year-to').value = maxYear;
+        document.getElementById('filter-month-to').value = maxDataMonth;
     }
 
     // Re-render
@@ -82,26 +85,31 @@ function populateFilters() {
         fromSel.appendChild(new Option(y, y));
         toSel.appendChild(new Option(y, y));
     });
-    // Default: show last 2 years
-    const defaultFrom = Math.max(minYear, maxYear - 1);
-    fromSel.value = defaultFrom;
+    // Default: from Jan of previous year to last available month
+    const defaultFromYear = Math.max(minYear, maxYear - 1);
+    fromSel.value = defaultFromYear;
     toSel.value = maxYear;
+    document.getElementById('filter-month-from').value = 1;
+    const maxDataMonth = Math.max(...rawData.filter(d => d.anio === maxYear).map(d => d.mes).filter(m => m));
+    document.getElementById('filter-month-to').value = maxDataMonth;
 
     fillSelect('filter-province', provinces);
     fillSelect('filter-canton', cantons);
 
-    fromSel.addEventListener('change', () => {
-        if (parseInt(fromSel.value) > parseInt(toSel.value)) {
+    function clampRange() {
+        const yFrom = parseInt(fromSel.value), mFrom = parseInt(document.getElementById('filter-month-from').value);
+        const yTo = parseInt(toSel.value), mTo = parseInt(document.getElementById('filter-month-to').value);
+        if (yFrom * 100 + mFrom > yTo * 100 + mTo) {
             toSel.value = fromSel.value;
+            document.getElementById('filter-month-to').value = document.getElementById('filter-month-from').value;
         }
-        updateDashboard();
-    });
+    }
 
-    toSel.addEventListener('change', () => {
-        if (parseInt(toSel.value) < parseInt(fromSel.value)) {
-            fromSel.value = toSel.value;
-        }
-        updateDashboard();
+    ['filter-year-from', 'filter-month-from'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => { clampRange(); updateDashboard(); });
+    });
+    ['filter-year-to', 'filter-month-to'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => { clampRange(); updateDashboard(); });
     });
 
     document.getElementById('filter-province').addEventListener('change', () => {
@@ -156,8 +164,11 @@ function resetFilters() {
     const years = [...new Set(rawData.map(d => d.anio))].filter(Boolean).sort((a, b) => a - b);
     const maxYear = years[years.length - 1];
     const defaultFrom = Math.max(years[0], maxYear - 1);
+    const maxDataMonth = Math.max(...rawData.filter(d => d.anio === maxYear).map(d => d.mes).filter(m => m));
     document.getElementById('filter-year-from').value = defaultFrom;
+    document.getElementById('filter-month-from').value = 1;
     document.getElementById('filter-year-to').value = maxYear;
+    document.getElementById('filter-month-to').value = maxDataMonth;
 
     const selects = ['filter-province', 'filter-canton', 'filter-age', 'filter-sex'];
     selects.forEach(id => {
@@ -189,21 +200,21 @@ function fillSelect(id, values) {
 }
 
 function getFilteredData() {
-    const fYearFrom = parseInt(document.getElementById('filter-year-from').value);
-    const fYearTo = parseInt(document.getElementById('filter-year-to').value);
+    const yFrom = parseInt(document.getElementById('filter-year-from').value);
+    const mFrom = parseInt(document.getElementById('filter-month-from').value);
+    const yTo = parseInt(document.getElementById('filter-year-to').value);
+    const mTo = parseInt(document.getElementById('filter-month-to').value);
+    const periodFrom = yFrom * 100 + mFrom;
+    const periodTo = yTo * 100 + mTo;
 
-    const provinceSelect = document.getElementById('filter-province');
-    const cantonSelect = document.getElementById('filter-canton');
-    const ageSelect = document.getElementById('filter-age');
-    const sexSelect = document.getElementById('filter-sex');
-
-    const selectedProvs = Array.from(provinceSelect.selectedOptions).map(o => o.value);
-    const selectedCants = Array.from(cantonSelect.selectedOptions).map(o => o.value);
-    const selectedAges = Array.from(ageSelect.selectedOptions).map(o => o.value);
-    const selectedSex = Array.from(sexSelect.selectedOptions).map(o => o.value);
+    const selectedProvs = Array.from(document.getElementById('filter-province').selectedOptions).map(o => o.value);
+    const selectedCants = Array.from(document.getElementById('filter-canton').selectedOptions).map(o => o.value);
+    const selectedAges = Array.from(document.getElementById('filter-age').selectedOptions).map(o => o.value);
+    const selectedSex = Array.from(document.getElementById('filter-sex').selectedOptions).map(o => o.value);
 
     return rawData.filter(d => {
-        if (d.anio < fYearFrom || d.anio > fYearTo) return false;
+        const period = d.anio * 100 + d.mes;
+        if (period < periodFrom || period > periodTo) return false;
         if (!selectedProvs.includes('all') && !selectedProvs.includes(d.provincia)) return false;
         if (!selectedCants.includes('all') && !selectedCants.includes(d.canton)) return false;
         const ageVal = d.rango_edad || 'DESCONOCIDO';
@@ -271,15 +282,17 @@ function renderTimeline(data) {
         '#ec4899', '#06b6d4', '#8b5cf6', '#14b8a6', '#f59e0b', '#10b981'
     ];
 
-    // Build monthly labels for the selected range, stopping at the last month with data
-    const maxDataYear = Math.max(...rawData.map(d => d.anio).filter(y => y));
-    const maxDataMonth = Math.max(...rawData.filter(d => d.anio === maxDataYear).map(d => d.mes).filter(m => m));
+    const monthFrom = parseInt(document.getElementById('filter-month-from').value);
+    const monthTo = parseInt(document.getElementById('filter-month-to').value);
+    const periodFrom = yearFrom * 100 + monthFrom;
+    const periodTo = yearTo * 100 + monthTo;
 
     const labels = [];
     const monthKeys = [];
     for (let y = yearFrom; y <= yearTo; y++) {
         for (let m = 1; m <= 12; m++) {
-            if (y === maxDataYear && m > maxDataMonth) break;
+            const period = y * 100 + m;
+            if (period < periodFrom || period > periodTo) continue;
             labels.push(`${getMonthName(m)} ${y}`);
             monthKeys.push(`${y}-${m}`);
         }
