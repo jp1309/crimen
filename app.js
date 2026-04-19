@@ -292,7 +292,8 @@ function renderTimeline(data) {
     for (let y = yearFrom; y <= yearTo; y++) {
         for (let m = 1; m <= 12; m++) {
             const period = y * 100 + m;
-            if (period < periodFrom || period > periodTo) continue;
+            if (period < periodFrom) continue;
+            if (period > periodTo) break;
             labels.push(`${getMonthName(m)} ${y}`);
             monthKeys.push(`${y}-${m}`);
         }
