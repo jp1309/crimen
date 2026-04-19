@@ -90,20 +90,27 @@ function populateFilters() {
     fillSelect('filter-province', provinces);
     fillSelect('filter-canton', cantons);
 
-    document.querySelectorAll('select').forEach(s => {
-        s.addEventListener('change', (e) => {
-            if (e.target.id === 'filter-province') {
-                updateCantonOptions();
-            }
-            // Ensure from <= to
-            if (e.target.id === 'filter-year-from' && parseInt(fromSel.value) > parseInt(toSel.value)) {
-                toSel.value = fromSel.value;
-            }
-            if (e.target.id === 'filter-year-to' && parseInt(toSel.value) < parseInt(fromSel.value)) {
-                fromSel.value = toSel.value;
-            }
-            updateDashboard();
-        });
+    fromSel.addEventListener('change', () => {
+        if (parseInt(fromSel.value) > parseInt(toSel.value)) {
+            toSel.value = fromSel.value;
+        }
+        updateDashboard();
+    });
+
+    toSel.addEventListener('change', () => {
+        if (parseInt(toSel.value) < parseInt(fromSel.value)) {
+            fromSel.value = toSel.value;
+        }
+        updateDashboard();
+    });
+
+    document.getElementById('filter-province').addEventListener('change', () => {
+        updateCantonOptions();
+        updateDashboard();
+    });
+
+    ['filter-canton', 'filter-age', 'filter-sex'].forEach(id => {
+        document.getElementById(id).addEventListener('change', updateDashboard);
     });
 }
 
