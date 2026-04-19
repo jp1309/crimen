@@ -314,7 +314,7 @@ function renderTimeline(data) {
             fill: false,
             spanGaps: false,
             borderWidth: 2,
-            pointRadius: monthKeys.length <= 24 ? 3 : 0,
+            pointRadius: 4,
             pointHoverRadius: 5
         };
     }
@@ -352,7 +352,7 @@ function renderTimeline(data) {
             fill: true,
             spanGaps: false,
             borderWidth: 2,
-            pointRadius: monthKeys.length <= 24 ? 3 : 0,
+            pointRadius: 4,
             pointHoverRadius: 5
         });
     }
