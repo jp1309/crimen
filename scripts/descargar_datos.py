@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import urllib.error
@@ -62,12 +63,61 @@ def _request(url: str) -> urllib.request.Request:
     )
 
 
+def _curl(url: str, output: Path | None = None, timeout: int = 180) -> bytes:
+    """Cliente alternativo para portales que bloquean la firma TLS de urllib."""
+
+    command = [
+        "curl",
+        "--fail",
+        "--location",
+        "--retry",
+        "2",
+        "--retry-all-errors",
+        "--silent",
+        "--show-error",
+        "--connect-timeout",
+        "30",
+        "--max-time",
+        str(timeout),
+        "--user-agent",
+        USER_AGENT,
+        "--referer",
+        SOURCE_PAGE,
+        "--header",
+        "Accept-Language: es-EC,es;q=0.9,en;q=0.8",
+    ]
+    if output is not None:
+        command.extend(["--output", str(output)])
+    command.append(url)
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            timeout=timeout + 15,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        detail = ""
+        if isinstance(exc, subprocess.CalledProcessError):
+            detail = exc.stderr.decode("utf-8", errors="replace").strip()
+        raise SourceUpdateError(f"curl no pudo descargar {url}: {detail or exc}") from exc
+    return result.stdout
+
+
 def obtener_metadata(api_url: str = CKAN_DATASET_API) -> dict[str, Any]:
     """Consulta CKAN y devuelve el objeto del conjunto de datos."""
 
     try:
         with urllib.request.urlopen(_request(api_url), timeout=60) as response:
             payload = json.load(response)
+    except urllib.error.HTTPError as exc:
+        if exc.code != 403:
+            raise SourceUpdateError(f"No se pudo consultar la API oficial: {exc}") from exc
+        print("La API rechazo urllib; reintentando con curl...")
+        try:
+            payload = json.loads(_curl(api_url, timeout=60))
+        except (SourceUpdateError, json.JSONDecodeError) as curl_exc:
+            raise SourceUpdateError(f"No se pudo consultar la API oficial: {curl_exc}") from curl_exc
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise SourceUpdateError(f"No se pudo consultar la API oficial: {exc}") from exc
 
@@ -153,6 +203,11 @@ def descargar_archivo(url: str, destination: Path) -> None:
             with destination.open("wb") as output:
                 while chunk := response.read(1024 * 1024):
                     output.write(chunk)
+    except urllib.error.HTTPError as exc:
+        if exc.code != 403:
+            raise SourceUpdateError(f"No se pudo descargar {url}: {exc}") from exc
+        print("El recurso rechazo urllib; reintentando con curl...")
+        _curl(url, output=destination)
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise SourceUpdateError(f"No se pudo descargar {url}: {exc}") from exc
 
