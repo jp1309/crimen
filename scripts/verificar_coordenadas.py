@@ -20,7 +20,7 @@ def check_coords():
 
     if not os.path.exists(CLEAN_FILE):
         print(f"Error: {CLEAN_FILE} no encontrado")
-        return
+        return False
 
     print("Cargando datos...")
     df = pd.read_csv(CLEAN_FILE)
@@ -62,7 +62,8 @@ def check_coords():
 
     print("-" * 45)
     print(f"{'TOTAL':<6} | {total_all:>8,} | {valid_all:>10,} | {pct_all:>10.1f}%")
+    return True
 
 
 if __name__ == "__main__":
-    check_coords()
+    raise SystemExit(0 if check_coords() else 1)

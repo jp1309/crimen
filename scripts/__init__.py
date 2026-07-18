@@ -3,7 +3,7 @@ Scripts del Pipeline ETL - Observatorio de Seguridad Ecuador
 =============================================================
 
 Este paquete contiene los scripts de procesamiento de datos para el
-dashboard de homicidios intencionales en Ecuador (2014-2025).
+dashboard de homicidios intencionales en Ecuador desde 2014.
 
 Estructura del Pipeline
 -----------------------
@@ -28,9 +28,9 @@ Uso Basico
 
 Fuente de Datos
 ---------------
-Ministerio del Interior de Ecuador (MDI)
-- Historico: mdi_homicidios_intencionales_pm_2014_2024.xlsx
-- Actual: mdi_homicidiosintencionalse_pm_2025_*.xlsx
+Datos Abiertos Ecuador / Ministerio del Interior
+- Historico canonico: mdi_homicidios_intencionales_pm_historico.xlsx
+- Actual canonico: mdi_homicidios_intencionales_pm_actual.xlsx
 
 Salida
 ------
@@ -41,4 +41,4 @@ Salida
 from scripts.limpiar_datos import clean_data
 
 __all__ = ['clean_data']
-__version__ = '1.0.0'
+__version__ = '2.0.0'

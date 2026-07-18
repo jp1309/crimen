@@ -1,17 +1,37 @@
-name: Actualizar Dashboard
+name: Actualizar datos y dashboard
 
 on:
+  # Primera revision el dia 15. Si el Ministerio se retrasa, se vuelve a
+  # consultar aproximadamente cada tres dias. Los dias 2, 5, 8 y 11 cubren
+  # retrasos que crucen al mes siguiente; las ejecuciones sin cambios son no-op.
+  schedule:
+    - cron: '17 14 2,5,8,11,15,18,21,24,27,30 * *'
   push:
     paths:
-      - 'data/raw/**.xlsx'
+      - 'data/raw/**/*.xlsx'
+      - 'scripts/**'
+      - 'requirements.txt'
+      - '.github/workflows/update_data.yml'
   workflow_dispatch:
+    inputs:
+      sincronizar_fuentes:
+        description: 'Consultar y descargar las fuentes oficiales antes de reconstruir'
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write
+  pages: write
+
+concurrency:
+  group: update-homicidios-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repositorio
@@ -21,25 +41,60 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Instalar dependencias
-        run: |
-          python -m pip install --upgrade pip
-          pip install pandas openpyxl unidecode numpy
+        run: python -m pip install --requirement requirements.txt
 
-      - name: Ejecutar pipeline ETL
+      - name: Sincronizar fuentes oficiales
+        id: sync
+        if: >-
+          github.event_name == 'schedule' ||
+          (github.event_name == 'workflow_dispatch' && inputs.sincronizar_fuentes)
+        run: python -m scripts.descargar_datos --github-output "$GITHUB_OUTPUT"
+
+      - name: Reconstruir datos acumulativos
+        id: rebuild
+        if: >-
+          github.event_name != 'schedule' ||
+          steps.sync.outputs.changed == 'true'
         run: |
-          cd $GITHUB_WORKSPACE
           python -m scripts.consolidar_y_limpiar
+          python -m scripts.verificar_datos
+          python -m scripts.verificar_coordenadas
 
-      - name: Subir cambios
+      - name: Guardar actualizacion
+        id: commit
+        if: steps.rebuild.outcome == 'success'
+        shell: bash
         run: |
-          git config --global user.name "GitHub Action"
-          git config --global user.email "action@github.com"
-          git add homicidios_clean.csv data/processed/homicidios_consolidado.csv
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- \
+            data/raw \
+            data/source_manifest.json \
+            data/processed/homicidios_consolidado.csv \
+            homicidios_clean.csv
+
           if git diff --staged --quiet; then
-            echo "Sin cambios en los datos"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Sin cambios para guardar"
           else
-            git commit -m "Auto-update: Datos actualizados [GitHub Action]"
+            source_name="${{ steps.sync.outputs.source_name }}"
+            if [ -z "$source_name" ]; then
+              source_name="fuentes locales"
+            fi
+            git commit -m "Datos actualizados: ${source_name}"
             git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # El sitio usa actualmente GitHub Pages legacy desde main. Los commits
+      # creados con GITHUB_TOKEN no disparan otro workflow ni un build de Pages,
+      # por lo que se solicita el build explicitamente.
+      - name: Publicar GitHub Pages
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/${GITHUB_REPOSITORY}/pages/builds"

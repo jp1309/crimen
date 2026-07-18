@@ -43,6 +43,13 @@ def clean_data(input_path, output_path):
     # 2. Normalizar nombres de columnas
     df.columns = [c.lower().strip().replace(" ", "_") for c in df.columns]
 
+    required_columns = {'fecha_infraccion', 'provincia', 'canton', 'edad'}
+    missing_required = sorted(required_columns - set(df.columns))
+    if missing_required:
+        raise ValueError(
+            "Faltan columnas obligatorias: " + ", ".join(missing_required)
+        )
+
     # 3. Procesar fechas
     print("Procesando fechas...")
     df['fecha_infraccion'] = pd.to_datetime(df['fecha_infraccion'], errors='coerce')
@@ -105,8 +112,10 @@ def clean_data(input_path, output_path):
             pct = count / len(df) * 100
             print(f"  {col}: {count:,} ({pct:.1f}%)")
 
-    # Guardar
-    df.to_csv(output_path, index=False)
+    # Guardar de forma atomica para no dejar un CSV parcial si el proceso falla.
+    temp_output = f"{output_path}.tmp"
+    df.to_csv(temp_output, index=False)
+    os.replace(temp_output, output_path)
     print(f"\nGuardado: {output_path}")
     return True
 

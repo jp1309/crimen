@@ -1,96 +1,81 @@
-"""
-Verificar Integridad de Datos
-=============================
-Script de QA que compara el conteo de registros entre
-los archivos Excel fuente y el CSV limpio final.
+"""Verifica que el CSV limpio reproduzca exactamente las fuentes primarias."""
 
-Uso:
-    python scripts/verificar_datos.py
-"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
 
 import pandas as pd
-import os
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_RAW = os.path.join(PROJECT_ROOT, "data", "raw")
-CLEAN_FILE = os.path.join(PROJECT_ROOT, "homicidios_clean.csv")
+from scripts.configuracion import OUTPUT_CLEAN
+from scripts.consolidar_y_limpiar import detectar_archivos, smart_read_excel
 
 
-def verify_data_integrity():
-    """Verifica la integridad de los datos comparando fuentes con salida."""
+def _year_counts(frame: pd.DataFrame, source_name: str) -> dict[int, int]:
+    normalized = {str(column).lower().strip().replace(" ", "_"): column for column in frame.columns}
+    if "fecha_infraccion" not in normalized:
+        raise ValueError(f"{source_name} no contiene FECHA_INFRACCION")
+    dates = pd.to_datetime(frame[normalized["fecha_infraccion"]], errors="coerce")
+    invalid = int(dates.isna().sum())
+    if invalid:
+        raise ValueError(f"{source_name} contiene {invalid:,} fechas invalidas")
+    return {int(year): int(count) for year, count in dates.dt.year.value_counts().items()}
 
-    print("=" * 50)
-    print("VERIFICACIÓN DE INTEGRIDAD DE DATOS")
-    print("=" * 50)
 
-    # 1. Contar registros del histórico
-    path_historic = os.path.join(DATA_RAW, "mdi_homicidios_intencionales_pm_2014_2024.xlsx")
-    count_historic = 0
+def verify_data_integrity(clean_file: str | Path = OUTPUT_CLEAN) -> bool:
+    print("=" * 60)
+    print("VERIFICACION DE INTEGRIDAD DE DATOS")
+    print("=" * 60)
 
-    if os.path.exists(path_historic):
-        print(f"\nLeyendo histórico...")
-        try:
-            xls = pd.ExcelFile(path_historic)
-            for sheet in xls.sheet_names:
-                df = pd.read_excel(xls, sheet_name=sheet, header=None)
-                # Buscar fila de encabezado
-                for i, row in df.head(20).iterrows():
-                    if "Provincia" in str(row.values) or "PROVINCIA" in str(row.values):
-                        df = pd.read_excel(xls, sheet_name=sheet, header=i)
-                        count_historic = len(df)
-                        print(f"  Histórico 2014-2024: {count_historic:,} registros")
-                        break
-                if count_historic > 0:
-                    break
-        except Exception as e:
-            print(f"  Error: {e}")
-    else:
-        print("  Advertencia: Archivo histórico no encontrado")
+    try:
+        historical_path, current_path = detectar_archivos()
+        if not historical_path or not current_path:
+            raise FileNotFoundError("No se detectaron las dos fuentes primarias")
 
-    # 2. Contar registros del archivo 2025
-    archivos_2025 = [f for f in os.listdir(DATA_RAW)
-                     if "2025" in f and f.endswith(".xlsx") and not f.startswith("~$")]
-    count_2025 = 0
+        sources = [
+            smart_read_excel(historical_path, "Historico"),
+            smart_read_excel(current_path, "Anio en curso acumulado"),
+        ]
+        expected_count = sum(len(frame) for frame in sources)
+        expected_years: dict[int, int] = {}
+        for frame, path in zip(sources, (historical_path, current_path)):
+            for year, count in _year_counts(frame, path.name).items():
+                if year in expected_years:
+                    raise ValueError(f"El anio {year} aparece en mas de una fuente")
+                expected_years[year] = count
 
-    if archivos_2025:
-        path_2025 = os.path.join(DATA_RAW, archivos_2025[0])
-        print(f"\nLeyendo {archivos_2025[0]}...")
-        try:
-            df_raw = pd.read_excel(path_2025, header=None)
-            for i, row in df_raw.head(30).iterrows():
-                if "Provincia" in str(row.values) or "PROVINCIA" in str(row.values):
-                    df = pd.read_excel(path_2025, header=i)
-                    count_2025 = len(df)
-                    print(f"  Datos 2025: {count_2025:,} registros")
-                    break
-        except Exception as e:
-            print(f"  Error: {e}")
+        clean_path = Path(clean_file)
+        if not clean_path.exists():
+            raise FileNotFoundError(f"CSV limpio no encontrado: {clean_path}")
+        clean = pd.read_csv(clean_path, low_memory=False)
+        if "anio" not in clean.columns:
+            raise ValueError("El CSV limpio no contiene la columna anio")
+        clean_years = {
+            int(year): int(count)
+            for year, count in clean["anio"].value_counts(dropna=False).items()
+            if pd.notna(year)
+        }
 
-    total_expected = count_historic + count_2025
-    print(f"\nTotal esperado: {total_expected:,}")
+        print(f"\nRegistros esperados: {expected_count:,}")
+        print(f"Registros en CSV:    {len(clean):,}")
+        print("\nDesglose por anio:")
+        all_years = sorted(set(expected_years) | set(clean_years))
+        for year in all_years:
+            expected = expected_years.get(year, 0)
+            actual = clean_years.get(year, 0)
+            marker = "OK" if expected == actual else "ERROR"
+            print(f"  {year}: fuente={expected:>7,} csv={actual:>7,} [{marker}]")
 
-    # 3. Verificar CSV limpio
-    print(f"\n" + "-" * 50)
-    if os.path.exists(CLEAN_FILE):
-        df_clean = pd.read_csv(CLEAN_FILE)
-        print(f"CSV limpio: {len(df_clean):,} registros")
-
-        # Desglose por año
-        print("\nDesglose por año:")
-        counts = df_clean['anio'].value_counts().sort_index()
-        for year, count in counts.items():
-            print(f"  {int(year)}: {count:,}")
-
-        diff = len(df_clean) - total_expected
-        print(f"\nDiferencia: {diff:+,}")
-
-        if abs(diff) < 50:
-            print("\n[OK] VERIFICACION EXITOSA")
+        valid = expected_count == len(clean) and expected_years == clean_years
+        if valid:
+            print("\n[OK] VERIFICACION EXACTA EXITOSA")
         else:
-            print("\n[!] ADVERTENCIA: Discrepancia significativa")
-    else:
-        print("Error: CSV limpio no encontrado")
+            print("\n[ERROR] El CSV no reproduce exactamente las fuentes")
+        return valid
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return False
 
 
 if __name__ == "__main__":
-    verify_data_integrity()
+    raise SystemExit(0 if verify_data_integrity() else 1)

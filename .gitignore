@@ -21,3 +21,4 @@ Thumbs.db
 
 # Archivos Excel temporales (los que empiezan con ~$)
 ~$*.xlsx
+data/raw/.download-*.xlsx

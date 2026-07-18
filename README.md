@@ -1,273 +1,149 @@
-# Observatorio de Seguridad - Ecuador
+# Observatorio de Seguridad — Ecuador
 
-Dashboard interactivo para visualizar y analizar datos de homicidios intencionales en Ecuador (2014-2025).
+Dashboard interactivo para visualizar y analizar homicidios intencionales en Ecuador desde 2014.
 
-**[Ver Dashboard en Vivo](https://jp1309.github.io/crimen/)**
+**[Ver dashboard en vivo](https://jp1309.github.io/crimen/)**
 
----
+## Qué ofrece
 
-## Descripcion General
+- Evolución anual y mensual de casos.
+- Distribución por arma, hora, edad y sexo.
+- Rankings provinciales y cantonales.
+- Mapa de calor y marcadores georreferenciados.
+- Filtros temporales, territoriales y demográficos.
 
-Este proyecto proporciona una herramienta de visualizacion de datos de seguridad publica basada en informacion oficial del Ministerio del Interior de Ecuador. Permite explorar tendencias temporales, distribucion geografica y caracteristicas demograficas de los homicidios intencionales.
+Los datos provienen del conjunto oficial [Homicidios Intencionales — Datos Abiertos Ecuador](https://www.datosabiertos.gob.ec/dataset/homicidios-intencionales), publicado por el Ministerio del Interior.
 
-### Caracteristicas Principales
+## Arquitectura de datos
 
-- **Visualizacion temporal**: Evolucion anual y mensual de casos
-- **Analisis geografico**: Mapa de calor con geolocalizacion de incidentes
-- **Estadisticas demograficas**: Piramide poblacional por edad y genero
-- **Rankings territoriales**: Comparacion entre provincias y cantones
-- **Filtros interactivos**: Por ano, mes, ubicacion, edad y sexo
-
----
-
-## Estructura del Proyecto
-
-```
-crimen/
-│
-├── index.html                  # Pagina principal del dashboard
-├── app.js                      # Logica frontend (graficos, filtros, mapa)
-├── style.css                   # Estilos personalizados
-├── homicidios_clean.csv        # Dataset limpio (produccion)
-│
-├── data/
-│   ├── raw/                    # Archivos Excel originales del MDI
-│   │   ├── mdi_homicidios_intencionales_pm_2014_2024.xlsx
-│   │   └── mdi_homicidiosintencionalse_pm_2025_enero_diciembre.xlsx
-│   │
-│   └── processed/              # Archivos intermedios del pipeline
-│       └── homicidios_consolidado.csv
-│
-├── scripts/                    # Pipeline ETL en Python
-│   ├── __init__.py             # Documentacion del paquete
-│   ├── consolidar_y_limpiar.py # Script principal del pipeline
-│   ├── limpiar_datos.py        # Modulo de limpieza de datos
-│   ├── verificar_datos.py      # Validacion de integridad
-│   ├── verificar_coordenadas.py# Verificacion de geolocalizacion
-│   └── verificar_cantones.py   # Deteccion de duplicados
-│
-└── .github/
-    └── workflows/
-        └── update_data.yml     # Automatizacion CI/CD
+```text
+API de Datos Abiertos Ecuador (CKAN)
+               │
+               ▼
+     scripts/descargar_datos.py
+               │
+       ┌───────┴────────┐
+       ▼                ▼
+ histórico.xlsx     actual.xlsx
+       └───────┬────────┘
+               ▼
+ scripts/consolidar_y_limpiar.py
+               │
+       ┌───────┴──────────────┐
+       ▼                      ▼
+data/processed/          homicidios_clean.csv
+homicidios_consolidado.csv     │
+                              ▼
+                         Dashboard web
 ```
 
----
+Las fuentes locales tienen nombres canónicos y estables:
 
-## Vistas del Dashboard
+- `data/raw/mdi_homicidios_intencionales_pm_historico.xlsx`
+- `data/raw/mdi_homicidios_intencionales_pm_actual.xlsx`
+- `data/source_manifest.json`: URL, identificador, fecha oficial, tamaño y SHA-256 de cada fuente.
 
-| Vista | Descripcion | Graficos |
-|-------|-------------|----------|
-| **Evolucion** | Tendencias temporales | Linea temporal, tipos de arma, distribucion horaria |
-| **Ranking** | Analisis demografico y territorial | Piramide poblacional, ranking geografico |
-| **Mapa** | Visualizacion geografica | Heatmap, marcadores individuales |
+### Por qué el año actual se reemplaza completo
 
----
+El archivo mensual del Ministerio es acumulativo. Una publicación nueva no contiene únicamente el último mes: también puede corregir registros de todos los meses anteriores del mismo año. Por eso el pipeline reemplaza el Excel anual completo y reconstruye todo el CSV. Nunca concatena el nuevo archivo con una versión anterior del mismo año.
 
-## Tecnologias Utilizadas
+El pipeline también detiene la ejecución si el histórico y el archivo actual contienen años solapados, evitando duplicados durante una transición anual.
 
-### Frontend
-| Tecnologia | Proposito |
-|------------|-----------|
-| Vanilla JavaScript | Logica de aplicacion |
-| [Chart.js](https://www.chartjs.org/) | Graficos interactivos |
-| [Leaflet.js](https://leafletjs.com/) | Mapas y geolocalizacion |
-| [Tailwind CSS](https://tailwindcss.com/) | Framework de estilos |
-| [PapaParse](https://www.papaparse.com/) | Parsing de CSV |
+## Actualización automática
 
-### Backend (ETL)
-| Tecnologia | Proposito |
-|------------|-----------|
-| Python 3.10+ | Lenguaje de procesamiento |
-| [Pandas](https://pandas.pydata.org/) | Manipulacion de datos |
-| [Openpyxl](https://openpyxl.readthedocs.io/) | Lectura de Excel |
-| [Unidecode](https://pypi.org/project/Unidecode/) | Normalizacion de texto |
+El workflow [`.github/workflows/update_data.yml`](.github/workflows/update_data.yml) realiza la primera consulta el día 15 de cada mes y vuelve a consultar aproximadamente cada tres días. Las revisiones de los días 2, 5, 8 y 11 permiten continuar si la publicación se retrasa hasta el mes siguiente.
 
-### Infraestructura
-| Servicio | Proposito |
-|----------|-----------|
-| GitHub Pages | Hosting estatico |
-| GitHub Actions | CI/CD automatizado |
+Cada intento:
 
----
+1. Consulta la [API oficial del conjunto](https://www.datosabiertos.gob.ec/api/3/action/package_show?id=homicidios-intencionales).
+2. Descarga y valida las fuentes histórica y anual.
+3. Compara sus SHA-256 con las copias locales.
+4. Si no cambiaron, termina sin crear un commit.
+5. Si cambiaron, reemplaza las fuentes de forma atómica y reconstruye todos los datos.
+6. Exige igualdad exacta entre los conteos por año de los Excel y del CSV final.
+7. Guarda un único commit y solicita la publicación de GitHub Pages.
 
-## Guia de Uso
+El workflow también puede ejecutarse manualmente desde la pestaña **Actions**.
 
-### Requisitos Previos
+## Ejecución local
+
+Requisitos: Python 3.10 o superior.
 
 ```bash
-# Python 3.10 o superior
-python --version
+python -m pip install --requirement requirements.txt
 
-# Instalar dependencias
-pip install pandas openpyxl unidecode numpy
-```
+# Consultar, descargar y validar fuentes oficiales
+python -m scripts.descargar_datos
 
-### Actualizacion de Datos
-
-#### Opcion 1: Automatica (Recomendada)
-
-1. Colocar el nuevo archivo Excel en `data/raw/`
-2. Hacer commit y push
-3. GitHub Actions ejecuta el pipeline automaticamente
-4. El dashboard se actualiza en ~2 minutos
-
-#### Opcion 2: Manual (Local)
-
-```bash
-# 1. Colocar archivo Excel en data/raw/
-
-# 2. Ejecutar pipeline
+# Consolidar y limpiar
 python -m scripts.consolidar_y_limpiar
 
-# 3. Verificar resultados
+# QA obligatorio
 python -m scripts.verificar_datos
 python -m scripts.verificar_coordenadas
 
-# 4. Subir cambios
-git add homicidios_clean.csv data/processed/
-git commit -m "Actualizacion de datos"
-git push
+# Pruebas del sincronizador
+python -m unittest discover -v
 ```
 
----
+Para comprobar la fuente sin reemplazar archivos locales:
 
-## Pipeline ETL
-
-El pipeline procesa los datos en tres etapas:
-
-### Etapa 1: Consolidacion
-
-**Script:** `scripts/consolidar_y_limpiar.py`
-
-```
-Excel Historico (2014-2024) ─┐
-                             ├──> CSV Consolidado ──> Limpieza
-Excel Actual (2025)         ─┘
+```bash
+python -m scripts.descargar_datos --dry-run
 ```
 
-**Funcionalidades:**
-- Detecta automaticamente el archivo Excel 2025 mas reciente
-- Prioriza archivos con rango completo (ej: "enero-diciembre" = prioridad 13)
-- Usa `smart_read_excel()` para encontrar la hoja de datos correcta
-- Los archivos del MDI suelen tener hojas de presentacion que se ignoran
+## Estructura del proyecto
 
-### Etapa 2: Limpieza
+```text
+crimen/
+├── index.html
+├── app.js
+├── style.css
+├── homicidios_clean.csv
+├── requirements.txt
+├── data/
+│   ├── source_manifest.json
+│   ├── raw/
+│   │   ├── mdi_homicidios_intencionales_pm_historico.xlsx
+│   │   └── mdi_homicidios_intencionales_pm_actual.xlsx
+│   └── processed/
+│       └── homicidios_consolidado.csv
+├── scripts/
+│   ├── configuracion.py
+│   ├── descargar_datos.py
+│   ├── consolidar_y_limpiar.py
+│   ├── limpiar_datos.py
+│   ├── verificar_datos.py
+│   ├── verificar_coordenadas.py
+│   └── verificar_cantones.py
+├── tests/
+│   └── test_descargar_datos.py
+└── .github/workflows/update_data.yml
+```
 
-**Script:** `scripts/limpiar_datos.py`
+## Validaciones
 
-| Proceso | Descripcion |
-|---------|-------------|
-| Columnas | Normaliza a minusculas con guiones bajos |
-| Fechas | Extrae `anio`, `mes`, `dia_semana` |
-| Coordenadas | Convierte coma a punto decimal |
-| Texto | Mayusculas, sin tildes (unidecode) |
-| Cantones | Normaliza variantes conocidas |
-| Edad | Categoriza en rangos (Nino, Joven, Adulto, etc.) |
+- Los dos recursos primarios deben estar activos y ser XLSX.
+- Cada archivo debe superar 50 KB, ser un ZIP/XLSX válido y contener una tabla con `PROVINCIA`.
+- La fuente histórica y la anual no pueden compartir años.
+- El número total de filas y el desglose anual deben coincidir exactamente entre Excel y CSV.
+- Las escrituras de fuentes, manifiesto y CSV se realizan de forma atómica.
 
-### Etapa 3: Validacion
+## Estado actual
 
-| Script | Proposito | Comando |
-|--------|-----------|---------|
-| `verificar_datos.py` | Compara conteos Excel vs CSV | `python -m scripts.verificar_datos` |
-| `verificar_coordenadas.py` | % completitud geografica por ano | `python -m scripts.verificar_coordenadas` |
-| `verificar_cantones.py` | Detecta duplicados ortograficos | `python -m scripts.verificar_cantones` |
+| Métrica | Valor |
+|---|---:|
+| Período | enero de 2014 – junio de 2026 |
+| Registros | 43.975 |
+| Registros de 2026 | 4.154 |
+| Completitud geográfica total | 96,4 % |
 
----
+## Tecnologías
 
-## Esquema de Datos
+- Frontend: JavaScript, Chart.js, Leaflet, Tailwind CSS y PapaParse.
+- Datos: Python, pandas, openpyxl y Unidecode.
+- Automatización: GitHub Actions y GitHub Pages.
 
-### Columnas Principales del CSV
+## Licencia y fuente
 
-| Columna | Tipo | Descripcion |
-|---------|------|-------------|
-| `fecha_infraccion` | datetime | Fecha del incidente |
-| `anio` | int | Ano (2014-2025) |
-| `mes` | int | Mes (1-12) |
-| `dia_semana` | string | Lunes, Martes, etc. |
-| `provincia` | string | Provincia de Ecuador |
-| `canton` | string | Canton |
-| `coordenada_x` | float | Longitud (para Leaflet) |
-| `coordenada_y` | float | Latitud (para Leaflet) |
-| `sexo` | string | HOMBRE, MUJER, DESCONOCIDO |
-| `edad` | float | Edad de la victima |
-| `rango_edad` | string | Nino, Adolescente, Joven, Adulto, Adulto Mayor, Anciano |
-| `arma` | string | Tipo de arma utilizada |
-| `tipo_muerte` | string | HOMICIDIO, ASESINATO, etc. |
-
----
-
-## Notas Tecnicas
-
-### Formatos Excel del MDI
-
-Los archivos del Ministerio del Interior tienen caracteristicas especiales:
-
-1. **Hojas de presentacion**: La primera hoja suele ser metadata
-2. **Encabezados variables**: Los datos no siempre empiezan en la fila 0
-3. **Formato de coordenadas**: Usan coma como separador decimal
-
-El script `smart_read_excel()` maneja estos casos automaticamente buscando la fila que contiene "PROVINCIA".
-
-### Compatibilidad de Locale
-
-El script de limpieza no depende del locale del sistema operativo. Los dias de la semana se mapean manualmente de ingles a espanol para garantizar compatibilidad en GitHub Actions (Ubuntu).
-
-### Coordenadas Geograficas
-
-- Ecuador: Latitud ~-1.8, Longitud ~-78
-- Los datos recientes (2023-2025) tienen ~100% de completitud
-- Los anos anteriores tienen completitud variable (ver `verificar_coordenadas.py`)
-
----
-
-## Transicion Anual
-
-### Al cerrar un ano (ej: 2025 -> 2026)
-
-1. **Fusionar historico**: Combinar 2014-2024 + 2025 en un nuevo archivo
-   ```
-   mdi_homicidios_intencionales_pm_2014_2025.xlsx
-   ```
-
-2. **Actualizar script**: Cambiar `archivo_historico` en `consolidar_y_limpiar.py`
-
-3. **Nuevo ano**: Colocar archivo 2026 en `data/raw/` - se detecta automaticamente
-
-### Nomenclatura de Archivos
-
-El script detecta el archivo mas reciente basandose en:
-
-| Patron | Prioridad |
-|--------|-----------|
-| `*enero*diciembre*` | 13 (ano completo) |
-| `*diciembre*` | 12 |
-| `*noviembre*` | 11 |
-| `*_11_*` | 11 |
-| ... | ... |
-
----
-
-## Estadisticas Actuales
-
-| Metrica | Valor |
-|---------|-------|
-| Periodo | 2014-2025 |
-| Total registros | ~39,754 |
-| Ultimo mes | Diciembre 2025 |
-| Completitud geografica | ~76.5% |
-
----
-
-## Fuente de Datos
-
-**Ministerio del Interior de Ecuador**
-- Direccion de Estadistica y Economia de la Seguridad
-- Datos de la Policia Nacional del Ecuador
-
----
-
-## Licencia
-
-Los datos son de dominio publico, proporcionados por el Ministerio del Interior de Ecuador.
-
-El codigo fuente de este proyecto esta disponible bajo licencia MIT.
+Los datos son públicos y se distribuyen bajo Creative Commons Attribution según el catálogo oficial. El código del proyecto está disponible bajo licencia MIT.

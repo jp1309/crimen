@@ -1,213 +1,201 @@
-"""
-Consolidar y Limpiar Datos de Homicidios
-========================================
-Script principal del pipeline ETL que:
-1. Detecta automáticamente el archivo Excel 2025 más reciente
-2. Lo fusiona con el histórico 2014-2024
-3. Ejecuta la limpieza de datos
+"""Consolida las fuentes oficiales y genera el CSV de produccion.
+
+La fuente del anio en curso es acumulativa: cuando cambia, se procesa completa
+para incorporar tanto el mes nuevo como las revisiones de meses anteriores.
 
 Uso:
-    python scripts/consolidar_y_limpiar.py
+    python -m scripts.consolidar_y_limpiar
 """
 
-import pandas as pd
+from __future__ import annotations
+
 import os
+import re
 import sys
+from pathlib import Path
 
-# Rutas del proyecto
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_RAW = os.path.join(PROJECT_ROOT, "data", "raw")
-DATA_PROCESSED = os.path.join(PROJECT_ROOT, "data", "processed")
-OUTPUT_CLEAN = os.path.join(PROJECT_ROOT, "homicidios_clean.csv")
+import pandas as pd
+
+from scripts.configuracion import (
+    CANONICAL_SOURCES,
+    DATA_PROCESSED,
+    DATA_RAW,
+    OUTPUT_CLEAN,
+    OUTPUT_CONSOLIDATED,
+)
 
 
-def get_month_value(filename):
-    """
-    Determina el valor de ordenamiento de un archivo por su nombre.
-    Archivos con 'enero' y 'diciembre' (año completo) tienen prioridad máxima.
-    """
-    meses_map = {
-        'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6,
-        'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
-    }
+MESES = {
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
+}
 
-    clean_name = filename.lower().replace(".xlsx", "")
-    parts = clean_name.replace("_", " ").split()
 
-    # Prioridad máxima: archivos que contengan "enero" Y "diciembre" (año completo)
-    if 'enero' in parts and 'diciembre' in parts:
+def get_month_value(filename: str) -> int:
+    """Obtiene el ultimo mes de cobertura indicado en un nombre legado."""
+
+    parts = Path(filename).stem.lower().replace("_", " ").replace("-", " ").split()
+    if "enero" in parts and "diciembre" in parts:
         return 13
-
-    # Buscar nombre de mes explícito (tomar el más alto si hay varios)
-    max_month = 0
-    for part in parts:
-        if part in meses_map and meses_map[part] > max_month:
-            max_month = meses_map[part]
-    if max_month > 0:
-        return max_month
-
-    # Si no hay nombre, buscar número (ej: 2025_11 -> 11)
-    for part in parts:
-        if part.isdigit():
-            val = int(part)
-            if 1 <= val <= 12:
-                return val
-    return 0
+    month = max((MESES.get(part, 0) for part in parts), default=0)
+    if month:
+        return month
+    return max((int(part) for part in parts if part.isdigit() and 1 <= int(part) <= 12), default=0)
 
 
-def smart_read_excel(path, desc):
-    """
-    Lee un archivo Excel buscando automáticamente la hoja y fila de encabezado correctas.
-    Los archivos del MDI suelen tener hojas de presentación que hay que ignorar.
-    """
-    print(f"Leyendo {desc} ({os.path.basename(path)})...")
+def smart_read_excel(path: str | Path, desc: str) -> pd.DataFrame:
+    """Localiza automaticamente la hoja y la fila de encabezado oficiales."""
 
-    if not os.path.exists(path):
-        print(f"  Advertencia: Archivo no encontrado.")
-        return pd.DataFrame()
+    path = Path(path)
+    print(f"Leyendo {desc} ({path.name})...")
+    if not path.exists():
+        raise FileNotFoundError(f"Archivo no encontrado: {path}")
 
     try:
-        xls = pd.ExcelFile(path)
-    except Exception as e:
-        print(f"  Error abriendo Excel: {e}")
-        return pd.DataFrame()
+        workbook = pd.ExcelFile(path)
+    except Exception as exc:
+        raise ValueError(f"No se pudo abrir {path.name}: {exc}") from exc
 
-    target_sheet = None
-    header_row = -1
-
-    # Recorrer hojas buscando PROVINCIA
-    for sheet in xls.sheet_names:
+    for sheet in workbook.sheet_names:
         try:
-            df_preview = pd.read_excel(xls, sheet_name=sheet, header=None, nrows=50)
-        except:
+            preview = pd.read_excel(workbook, sheet_name=sheet, header=None, nrows=50)
+        except Exception:
             continue
+        for row_number, row in preview.iterrows():
+            row_text = " ".join(str(value).upper() for value in row.values if pd.notna(value))
+            if "PROVINCIA" in row_text and any(
+                token in row_text for token in ("FECHA", "ZONA", "CANTON")
+            ):
+                print(f"  -> Datos en hoja '{sheet}', encabezado fila {row_number + 1}")
+                return pd.read_excel(workbook, sheet_name=sheet, header=row_number)
 
-        for i, row in df_preview.iterrows():
-            row_str = " ".join([str(x).upper() if pd.notna(x) else "" for x in row.values])
-
-            # Criterios: PROVINCIA y (FECHA o ZONA o CANTON)
-            if "PROVINCIA" in row_str and ("FECHA" in row_str or "ZONA" in row_str or "CANTON" in row_str):
-                target_sheet = sheet
-                header_row = i
-                print(f"  -> Datos en hoja '{sheet}', encabezado fila {i}")
-                break
-        if target_sheet:
-            break
-
-    if not target_sheet:
-        print(f"  Error: No se detectó tabla de datos válida.")
-        return pd.DataFrame()
-
-    try:
-        df = pd.read_excel(xls, sheet_name=target_sheet, header=header_row)
-        return df
-    except Exception as e:
-        print(f"  Error leyendo datos: {e}")
-        return pd.DataFrame()
+    raise ValueError(f"No se detecto una tabla de datos valida en {path.name}")
 
 
-def detectar_archivos():
-    """
-    Detecta automáticamente el histórico y el archivo más reciente en data/raw.
-    - Histórico: archivo que cubre el rango más largo (detectado por tener dos años en el nombre, ej: 2014_2025)
-    - Reciente: archivo con el año más alto y mes más completo
-    """
-    archivos = [f for f in os.listdir(DATA_RAW)
-                if f.endswith(".xlsx") and not f.startswith("~$")]
+def _detectar_archivos_legados() -> tuple[Path | None, Path | None]:
+    files = [
+        path
+        for path in DATA_RAW.glob("*.xlsx")
+        if not path.name.startswith("~$") and path not in CANONICAL_SOURCES.values()
+    ]
+    historical: Path | None = None
+    partials: list[Path] = []
 
-    # Separar histórico (nombre con dos años distintos, ej: 2014_2025) de archivos anuales parciales
-    import re
-    historico = None
-    parciales = []
-
-    for f in archivos:
-        años = re.findall(r'20\d{2}', f)
-        if len(años) >= 2 and años[0] != años[-1]:
-            # Tiene dos años distintos → es el histórico; quedarse con el de año final más alto
-            if historico is None or int(re.findall(r'20\d{2}', f)[-1]) > int(re.findall(r'20\d{2}', historico)[-1]):
-                historico = f
+    for path in files:
+        years = re.findall(r"20\d{2}", path.name)
+        if len(years) >= 2 and years[0] != years[-1]:
+            if historical is None:
+                historical = path
+            else:
+                current_end = int(re.findall(r"20\d{2}", historical.name)[-1])
+                candidate_end = int(years[-1])
+                if candidate_end > current_end:
+                    historical = path
         else:
-            parciales.append(f)
+            partials.append(path)
 
-    # Si no hay histórico separado, usar todos los archivos como parciales
-    if historico is None:
-        parciales = archivos
+    if historical is None:
+        partials = files
 
-    # Del resto, tomar el de año más reciente y mes más completo
-    def sort_key(f):
-        años = re.findall(r'20\d{2}', f)
-        año_max = max(int(a) for a in años) if años else 0
-        return (año_max, get_month_value(f))
+    def sort_key(path: Path) -> tuple[int, int]:
+        years = re.findall(r"20\d{2}", path.name)
+        max_year = max((int(year) for year in years), default=0)
+        return max_year, get_month_value(path.name)
 
-    archivo_reciente = max(parciales, key=sort_key) if parciales else None
-
-    return historico, archivo_reciente
+    current = max(partials, key=sort_key) if partials else None
+    return historical, current
 
 
-def consolidar():
-    """Función principal de consolidación."""
+def detectar_archivos() -> tuple[Path | None, Path | None]:
+    """Devuelve las fuentes canonicas o, durante la migracion, las legadas."""
 
-    historico, archivo_reciente = detectar_archivos()
+    canonical_exists = {key: path.exists() for key, path in CANONICAL_SOURCES.items()}
+    if all(canonical_exists.values()):
+        return CANONICAL_SOURCES["historico"], CANONICAL_SOURCES["actual"]
+    if any(canonical_exists.values()):
+        missing = [key for key, exists in canonical_exists.items() if not exists]
+        raise FileNotFoundError(
+            "Migracion de fuentes incompleta; faltan archivos canonicos: " + ", ".join(missing)
+        )
+    return _detectar_archivos_legados()
 
-    if not historico and not archivo_reciente:
-        print("Error: No se encontró ningún archivo Excel en data/raw/")
-        return False
 
-    print("=" * 50)
-    print("CONSOLIDACIÓN DE DATOS DE HOMICIDIOS")
-    print("=" * 50)
-    print(f"Histórico:  {historico or '(ninguno)'}")
-    print(f"Reciente:   {archivo_reciente or '(ninguno)'}")
-    print()
+def _source_years(frame: pd.DataFrame, source_name: str) -> set[int]:
+    normalized = {str(column).lower().strip().replace(" ", "_"): column for column in frame.columns}
+    date_column = normalized.get("fecha_infraccion")
+    if date_column is None:
+        raise ValueError(f"La fuente {source_name} no contiene FECHA_INFRACCION")
+    dates = pd.to_datetime(frame[date_column], errors="coerce")
+    if dates.notna().sum() == 0:
+        raise ValueError(f"La fuente {source_name} no contiene fechas validas")
+    return {int(year) for year in dates.dt.year.dropna().unique()}
+
+
+def consolidar() -> bool:
+    """Ejecuta la consolidacion, los invariantes y la limpieza."""
 
     try:
-        # 1. Cargar histórico
-        df_hist = smart_read_excel(
-            os.path.join(DATA_RAW, historico),
-            f"Histórico ({historico})"
-        ) if historico else pd.DataFrame()
+        historical_path, current_path = detectar_archivos()
+        if not historical_path or not current_path:
+            raise FileNotFoundError(
+                "Se requieren una fuente historica y una fuente del anio en curso en data/raw"
+            )
 
-        # 2. Cargar archivo reciente (puede ser año en curso)
-        df_reciente = smart_read_excel(
-            os.path.join(DATA_RAW, archivo_reciente),
-            f"Reciente ({archivo_reciente})"
-        ) if archivo_reciente else pd.DataFrame()
+        print("=" * 60)
+        print("CONSOLIDACION DE DATOS DE HOMICIDIOS")
+        print("=" * 60)
+        print(f"Historico: {historical_path.name}")
+        print(f"Actual:    {current_path.name}")
 
-        if df_hist.empty and df_reciente.empty:
-            print("Error: No hay datos para procesar.")
-            return False
+        historical = smart_read_excel(historical_path, "Historico")
+        current = smart_read_excel(current_path, "Anio en curso acumulado")
+        if historical.empty or current.empty:
+            raise ValueError("Una de las fuentes primarias no contiene registros")
 
-        # 3. Consolidar
-        print(f"\nUniendo registros...")
-        print(f"  Histórico: {len(df_hist):,} registros")
-        print(f"  Reciente:  {len(df_reciente):,} registros")
+        historical_years = _source_years(historical, historical_path.name)
+        current_years = _source_years(current, current_path.name)
+        overlap = historical_years & current_years
+        if overlap:
+            raise ValueError(
+                "Las fuentes se solapan en los anios "
+                + ", ".join(map(str, sorted(overlap)))
+                + "; se detiene el pipeline para evitar duplicados"
+            )
 
-        df_consolidado = pd.concat([df_hist, df_reciente], ignore_index=True)
-        print(f"  Total:     {len(df_consolidado):,} registros")
+        print("\nUniendo registros...")
+        print(f"  Historico: {len(historical):,}")
+        print(f"  Actual:    {len(current):,}")
+        consolidated = pd.concat([historical, current], ignore_index=True)
+        print(f"  Total:     {len(consolidated):,}")
 
-        # Guardar archivo intermedio
-        output_consolidado = os.path.join(DATA_PROCESSED, "homicidios_consolidado.csv")
-        df_consolidado.to_csv(output_consolidado, index=False)
-        print(f"\nArchivo intermedio: {output_consolidado}")
+        DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
+        temp_consolidated = OUTPUT_CONSOLIDATED.with_suffix(".csv.tmp")
+        consolidated.to_csv(temp_consolidated, index=False)
+        os.replace(temp_consolidated, OUTPUT_CONSOLIDATED)
+        print(f"Archivo intermedio: {OUTPUT_CONSOLIDATED}")
 
-        # 4. Ejecutar limpieza
-        print("\n" + "=" * 50)
+        print("\n" + "=" * 60)
         print("LIMPIEZA DE DATOS")
-        print("=" * 50)
+        print("=" * 60)
+        from scripts.limpiar_datos import clean_data
 
-        sys.path.insert(0, PROJECT_ROOT)
-        from scripts import limpiar_datos
-        limpiar_datos.clean_data(output_consolidado, OUTPUT_CLEAN)
-
+        if not clean_data(OUTPUT_CONSOLIDATED, OUTPUT_CLEAN):
+            raise RuntimeError("La limpieza no pudo generar la salida final")
         return True
-
-    except Exception as e:
-        print(f"Error crítico: {e}")
-        import traceback
-        traceback.print_exc()
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         return False
 
 
 if __name__ == "__main__":
-    success = consolidar()
-    sys.exit(0 if success else 1)
+    raise SystemExit(0 if consolidar() else 1)

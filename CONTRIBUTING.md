@@ -1,89 +1,64 @@
-# Guia de Contribucion
+# Guía de contribución
 
-## Actualizacion de Datos
+## Actualizar los datos
 
-### Paso 1: Obtener el archivo Excel
-
-Descargar el archivo mas reciente del Ministerio del Interior de Ecuador. El formato tipico es:
-
-```
-mdi_homicidiosintencionalse_pm_2025_[mes].xlsx
-```
-
-### Paso 2: Colocar en la carpeta correcta
+La vía recomendada es ejecutar manualmente el mismo proceso que usa GitHub Actions:
 
 ```bash
-# Mover el archivo a data/raw/
-mv archivo_descargado.xlsx data/raw/
-```
-
-### Paso 3: Ejecutar el pipeline
-
-```bash
-# Ejecutar consolidacion y limpieza
+python -m pip install --requirement requirements.txt
+python -m scripts.descargar_datos
 python -m scripts.consolidar_y_limpiar
-
-# Verificar integridad
 python -m scripts.verificar_datos
-
-# Verificar coordenadas (opcional)
 python -m scripts.verificar_coordenadas
+python -m unittest discover -v
 ```
 
-### Paso 4: Revisar y subir
+La fuente oficial es el conjunto [Homicidios Intencionales — Datos Abiertos Ecuador](https://www.datosabiertos.gob.ec/dataset/homicidios-intencionales). El sincronizador consulta su API, por lo que no se deben copiar ni renombrar manualmente los archivos publicados.
+
+### Regla fundamental
+
+El Excel del año actual es acumulativo y puede revisar meses anteriores. Siempre debe reemplazarse completo. No se debe anexar únicamente el mes nuevo ni conservar dos archivos anuales activos en `data/raw/`.
+
+### Revisar los cambios
 
 ```bash
-# Verificar cambios
-git status
-git diff homicidios_clean.csv | head -50
-
-# Subir cambios
-git add homicidios_clean.csv data/
-git commit -m "Datos actualizados: [mes] 2025"
-git push
+git status --short
+git diff --stat
 ```
 
----
+Los archivos esperados tras una actualización son:
 
-## Agregar Nuevas Normalizaciones
+- `data/raw/mdi_homicidios_intencionales_pm_historico.xlsx`, si la fuente histórica cambió.
+- `data/raw/mdi_homicidios_intencionales_pm_actual.xlsx`, si cambió el acumulado anual.
+- `data/source_manifest.json`.
+- `data/processed/homicidios_consolidado.csv`.
+- `homicidios_clean.csv`.
 
-Si detectas variantes de nombres de cantones:
+No se debe hacer commit si `scripts.verificar_datos` falla.
 
-1. Ejecutar verificacion:
-   ```bash
-   python -m scripts.verificar_cantones
-   ```
+## Probar sin modificar datos
 
-2. Agregar mapeo en `scripts/limpiar_datos.py`:
-   ```python
-   canton_mapping = {
-       'NOMBRE_VIEJO': 'NOMBRE_CORRECTO',
-       # ... agregar nuevos
-   }
-   ```
+```bash
+python -m scripts.descargar_datos --dry-run
+```
 
-3. Re-ejecutar pipeline y verificar.
+Esto descarga y valida temporalmente las fuentes, pero no reemplaza los Excel ni el manifiesto.
 
----
+## Agregar normalizaciones
 
-## Estructura de Archivos Excel
+Si aparecen variantes ortográficas de cantones:
 
-Los archivos del MDI tienen estructura variable. Si un archivo nuevo no se procesa correctamente:
+1. Ejecutar `python -m scripts.verificar_cantones`.
+2. Agregar el mapeo a `canton_mapping` en `scripts/limpiar_datos.py`.
+3. Reconstruir, ejecutar todo el QA y revisar los cambios.
 
-1. Abrir el Excel y verificar:
-   - Cual hoja contiene los datos
-   - En que fila estan los encabezados
-   - Si existe la columna "PROVINCIA"
+## Cuando cambie el formato oficial
 
-2. Si es necesario, ajustar `smart_read_excel()` en `consolidar_y_limpiar.py`.
+El sincronizador y el ETL buscan automáticamente una hoja cuya cabecera contenga `PROVINCIA` y al menos uno de estos campos: `FECHA`, `ZONA` o `CANTON`.
 
----
+Si una publicación no pasa la validación:
 
-## Reportar Problemas
-
-Abrir un issue en GitHub con:
-
-1. Descripcion del problema
-2. Archivo Excel que causa el error (si aplica)
-3. Mensaje de error completo
-4. Sistema operativo y version de Python
+1. No reemplazar manualmente los archivos canónicos.
+2. Revisar la hoja y fila de encabezado del nuevo Excel.
+3. Ajustar la detección en `scripts/descargar_datos.py` y `smart_read_excel()`.
+4. Agregar una prueba que reproduzca el nuevo formato.
