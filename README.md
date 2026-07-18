@@ -51,9 +51,11 @@ El pipeline también detiene la ejecución si el histórico y el archivo actual 
 
 ## Actualización automática
 
-El workflow [`.github/workflows/update_data.yml`](.github/workflows/update_data.yml) realiza la primera consulta el día 15 de cada mes y vuelve a consultar aproximadamente cada tres días. Las revisiones de los días 2, 5, 8 y 11 permiten continuar si la publicación se retrasa hasta el mes siguiente.
+La descarga se ejecuta mediante una automatización local de Codex asociada a este proyecto. La primera consulta se realiza el día 15 de cada mes y vuelve a intentarse aproximadamente cada tres días. Las revisiones de los días 2, 5, 8 y 11 permiten continuar si la publicación se retrasa hasta el mes siguiente.
 
-Cada intento:
+Esta separación es intencional: el portal oficial bloquea las direcciones IP de los runners alojados de GitHub, pero permite la descarga desde el entorno local del proyecto. Después de cada actualización, el `push` activa [`.github/workflows/update_data.yml`](.github/workflows/update_data.yml), que reconstruye, verifica y publica el dashboard.
+
+Cada intento local:
 
 1. Consulta la [API oficial del conjunto](https://www.datosabiertos.gob.ec/api/3/action/package_show?id=homicidios-intencionales). Si el catálogo bloquea la API desde GitHub Actions, usa las URLs oficiales estables de ambos recursos.
 2. Descarga y valida las fuentes histórica y anual.
@@ -61,9 +63,10 @@ Cada intento:
 4. Si no cambiaron, termina sin crear un commit.
 5. Si cambiaron, reemplaza las fuentes de forma atómica y reconstruye todos los datos.
 6. Exige igualdad exacta entre los conteos por año de los Excel y del CSV final.
-7. Guarda un único commit y solicita la publicación de GitHub Pages.
+7. Guarda un único commit y hace `push` a `main`.
+8. GitHub Actions repite el QA y GitHub Pages publica el dashboard.
 
-El workflow también puede ejecutarse manualmente desde la pestaña **Actions**.
+El workflow de reconstrucción también puede ejecutarse manualmente desde la pestaña **Actions**; la descarga oficial se realiza desde la automatización local.
 
 ## Ejecución local
 
