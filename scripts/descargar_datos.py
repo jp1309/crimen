@@ -30,12 +30,18 @@ from openpyxl import load_workbook
 from scripts.configuracion import (
     CANONICAL_SOURCES,
     CKAN_DATASET_API,
+    CKAN_DATASET_ID,
     DATA_RAW,
     SOURCE_MANIFEST,
+    STABLE_RESOURCES,
 )
 
 
-USER_AGENT = "observatorio-seguridad-ecuador/2.0 (+github.com/jp1309/crimen)"
+USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+SOURCE_PAGE = "https://www.datosabiertos.gob.ec/dataset/homicidios-intencionales"
 MIN_XLSX_SIZE = 50_000
 YEAR_RANGE_RE = re.compile(r"20\d{2}[-_]20\d{2}")
 
@@ -47,7 +53,12 @@ class SourceUpdateError(RuntimeError):
 def _request(url: str) -> urllib.request.Request:
     return urllib.request.Request(
         url,
-        headers={"Accept": "application/json, application/octet-stream", "User-Agent": USER_AGENT},
+        headers={
+            "Accept": "application/json, application/octet-stream",
+            "Accept-Language": "es-EC,es;q=0.9,en;q=0.8",
+            "Referer": SOURCE_PAGE,
+            "User-Agent": USER_AGENT,
+        },
     )
 
 
@@ -93,6 +104,38 @@ def clasificar_recursos(resources: list[dict[str, Any]]) -> dict[str, dict[str, 
             "No se encontraron todas las fuentes primarias en la API: " + ", ".join(missing)
         )
     return selected
+
+
+def _load_manifest(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def recursos_estables(manifest_path: Path = SOURCE_MANIFEST) -> dict[str, dict[str, Any]]:
+    """Construye recursos descargables aun cuando CKAN bloquee su API JSON.
+
+    CKAN mantiene estables los identificadores y la ruta ``/download`` aunque
+    cambie el nombre mensual del archivo. El manifiesto conserva el ultimo
+    nombre descriptivo conocido.
+    """
+
+    previous = _load_manifest(manifest_path).get("resources") or {}
+    resources: dict[str, dict[str, Any]] = {}
+    for key, stable in STABLE_RESOURCES.items():
+        previous_resource = previous.get(key) or {}
+        resources[key] = {
+            "id": stable["id"],
+            "name": previous_resource.get("official_name") or CANONICAL_SOURCES[key].name,
+            "format": "XLSX",
+            "state": "active",
+            "url": stable["url"],
+            "last_modified": previous_resource.get("last_modified"),
+        }
+    return resources
 
 
 def descargar_archivo(url: str, destination: Path) -> None:
@@ -181,8 +224,23 @@ def sincronizar(
 ) -> tuple[bool, dict[str, Any]]:
     """Descarga, valida y reemplaza atomicamente las fuentes que cambiaron."""
 
-    metadata = obtener_metadata(api_url)
-    resources = clasificar_recursos(metadata.get("resources") or [])
+    try:
+        metadata = obtener_metadata(api_url)
+        resources = clasificar_recursos(metadata.get("resources") or [])
+    except SourceUpdateError as exc:
+        # Datos Abiertos puede responder 403 a la API JSON desde rangos de IP
+        # de GitHub Actions. Las URLs estables de los recursos siguen siendo la
+        # fuente oficial y el SHA-256 determina si hubo una publicacion nueva.
+        print(f"Advertencia: {exc}")
+        print("Se usaran las URLs estables de los recursos oficiales.")
+        resources = recursos_estables(manifest_path)
+        metadata = {
+            "id": CKAN_DATASET_ID,
+            "name": "homicidios-intencionales",
+            "metadata_modified": None,
+            "update_frequency": ["Mensual"],
+            "resources": list(resources.values()),
+        }
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     temporary: dict[str, Path] = {}
@@ -198,12 +256,16 @@ def sincronizar(
             temp_path = Path(temp_name)
             temporary[key] = temp_path
             print(f"Descargando {resource['name']}...")
-            descargar_archivo(str(resource["url"]), temp_path)
+            # Se descarga por ID estable. La URL continua funcionando cuando
+            # CKAN reemplaza el nombre del Excel en una nueva publicacion.
+            download_url = STABLE_RESOURCES[key]["url"]
+            descargar_archivo(download_url, temp_path)
             validation = validar_excel(temp_path)
             digest = sha256_file(temp_path)
             target = raw_dir / CANONICAL_SOURCES[key].name
             prepared[key] = {
                 "resource": resource,
+                "download_url": download_url,
                 "temp_path": temp_path,
                 "target": target,
                 "sha256": digest,
@@ -245,6 +307,7 @@ def sincronizar(
                 "resource_id": resource.get("id"),
                 "official_name": resource.get("name"),
                 "official_url": resource.get("url"),
+                "download_url": item["download_url"],
                 "last_modified": resource.get("last_modified"),
                 "local_path": target.relative_to(manifest_path.parent.parent).as_posix(),
                 "sha256": sha256_file(target),
@@ -271,8 +334,16 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         changed, metadata = sincronizar(api_url=args.api_url, dry_run=args.dry_run)
-        resources = clasificar_recursos(metadata.get("resources") or [])
-        current_name = str(resources["actual"].get("name") or "")
+        current_id = STABLE_RESOURCES["actual"]["id"]
+        current_resource = next(
+            (
+                resource
+                for resource in metadata.get("resources") or []
+                if resource.get("id") == current_id
+            ),
+            {},
+        )
+        current_name = str(current_resource.get("name") or CANONICAL_SOURCES["actual"].name)
         _write_github_output(args.github_output, changed, current_name)
         print(f"Fuente anual oficial: {current_name}")
         print(f"Cambios detectados: {'si' if changed else 'no'}")

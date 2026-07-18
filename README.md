@@ -55,7 +55,7 @@ El workflow [`.github/workflows/update_data.yml`](.github/workflows/update_data.
 
 Cada intento:
 
-1. Consulta la [API oficial del conjunto](https://www.datosabiertos.gob.ec/api/3/action/package_show?id=homicidios-intencionales).
+1. Consulta la [API oficial del conjunto](https://www.datosabiertos.gob.ec/api/3/action/package_show?id=homicidios-intencionales). Si el catálogo bloquea la API desde GitHub Actions, usa las URLs oficiales estables de ambos recursos.
 2. Descarga y valida las fuentes histórica y anual.
 3. Compara sus SHA-256 con las copias locales.
 4. Si no cambiaron, termina sin crear un commit.
@@ -124,6 +124,7 @@ crimen/
 ## Validaciones
 
 - Los dos recursos primarios deben estar activos y ser XLSX.
+- Los identificadores estables de los recursos permiten descargar nuevas versiones aunque cambie el nombre mensual del Excel.
 - Cada archivo debe superar 50 KB, ser un ZIP/XLSX válido y contener una tabla con `PROVINCIA`.
 - La fuente histórica y la anual no pueden compartir años.
 - El número total de filas y el desglose anual deben coincidir exactamente entre Excel y CSV.

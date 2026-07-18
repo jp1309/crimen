@@ -8,9 +8,11 @@ from unittest.mock import patch
 
 from openpyxl import Workbook, load_workbook
 
+from scripts.configuracion import STABLE_RESOURCES
 from scripts.descargar_datos import (
     SourceUpdateError,
     clasificar_recursos,
+    recursos_estables,
     sha256_file,
     sincronizar,
     validar_excel,
@@ -45,6 +47,15 @@ class ResourceClassificationTests(unittest.TestCase):
             clasificar_recursos(
                 [resource("mdi_homicidios_intencionales_pm_2026_enero_junio.xlsx", "current")]
             )
+
+    def test_stable_resources_preserve_ids_when_api_is_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "missing-manifest.json"
+            selected = recursos_estables(manifest)
+
+        self.assertEqual(selected["historico"]["id"], "36b055c8-e10c-4e57-ba25-3046ca5ef15d")
+        self.assertEqual(selected["actual"]["id"], "cb8f704e-2b27-4d7f-9431-d40c4e27fa48")
+        self.assertTrue(str(selected["actual"]["url"]).endswith("/download"))
 
 
 class ExcelValidationTests(unittest.TestCase):
@@ -110,8 +121,8 @@ class AccumulatedReplacementTests(unittest.TestCase):
                 ],
             }
             downloads = {
-                "https://example.invalid/mdi_homicidios_intencionales_pm_2014-2025.xlsx": historical,
-                "https://example.invalid/mdi_homicidios_intencionales_pm_2026_enero_marzo.xlsx": new_current,
+                STABLE_RESOURCES["historico"]["url"]: historical,
+                STABLE_RESOURCES["actual"]["url"]: new_current,
             }
 
             def fake_download(url: str, destination: Path) -> None:
