@@ -2,7 +2,7 @@
 
 ## Actualizar los datos
 
-La vía recomendada es ejecutar manualmente el mismo proceso que usa GitHub Actions:
+La vía recomendada es ejecutar manualmente el proceso de la automatización local; GitHub Actions reconstruye y repite los controles después del `push`:
 
 ```bash
 python -m pip install --requirement requirements.txt
@@ -36,6 +36,8 @@ Los archivos esperados tras una actualización son:
 
 No se debe hacer commit si `scripts.verificar_datos` falla.
 
+`scripts.verificar_coordenadas` informa la cobertura espacial, pero no aplica actualmente un umbral de rechazo. Una caída inesperada debe investigarse y documentarse antes de publicar.
+
 ## Probar sin modificar datos
 
 ```bash
@@ -62,3 +64,25 @@ Si una publicación no pasa la validación:
 2. Revisar la hoja y fila de encabezado del nuevo Excel.
 3. Ajustar la detección en `scripts/descargar_datos.py` y `smart_read_excel()`.
 4. Agregar una prueba que reproduzca el nuevo formato.
+
+## Mantener la documentación
+
+Todo cambio de comportamiento debe actualizar la documentación correspondiente en el mismo commit:
+
+- Cambios de horario, tarea o publicación: `docs/AUTOMATIZACION.md` y `docs/OPERACION_Y_RECUPERACION.md`.
+- Cambios de columnas, tipos o normalizaciones: `docs/DICCIONARIO_DATOS.md`.
+- Cambios de vistas, filtros, dependencias o carga del CSV: `docs/ARQUITECTURA_FRONTEND.md`.
+- Cambios de estructura o comandos principales: `README.md` y `docs/README.md`.
+
+No agregue cifras mensuales estáticas al README: quedan obsoletas en la siguiente publicación. El estado vigente debe obtenerse mediante los controles o `data/source_manifest.json`.
+
+## Revisión mínima antes de un pull request
+
+```bash
+python -m unittest discover -v
+python -m scripts.verificar_datos
+python -m scripts.verificar_coordenadas
+git diff --check
+```
+
+Además, compruebe todos los enlaces Markdown locales y revise manualmente el dashboard si cambió `index.html`, `style.css`, `app.js` o el esquema del CSV.
