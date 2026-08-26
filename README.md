@@ -64,7 +64,7 @@ El pipeline también detiene la ejecución si el histórico y el archivo actual 
 
 La descarga se ejecuta íntegramente en [GitHub Actions](.github/workflows/update_data.yml), sin depender de Codex ni de una computadora encendida. Consulta a las 09:17, `America/New_York`, los días 15, 18, 21, 24, 27 y 30. Las revisiones de los días 2, 5, 8 y 11 cubren publicaciones retrasadas hasta el mes siguiente.
 
-El portal oficial puede bloquear las direcciones IP de los runners de GitHub. El workflow prueba primero la ruta directa y, ante un bloqueo, activa temporalmente el cliente oficial de Cloudflare WARP. Todo el ciclo sigue ocurriendo dentro del runner remoto y no requiere secretos ni infraestructura propia.
+El portal oficial bloquea las direcciones de los runners de GitHub. El workflow prueba primero la ruta directa y, ante un bloqueo, usa el secreto `SOURCE_HTTPS_PROXY`, que debe contener la URL de un proxy HTTPS administrado. Todo el ciclo ocurre dentro del runner remoto; no depende de una computadora ni de una tarea local.
 
 Cada intento remoto:
 

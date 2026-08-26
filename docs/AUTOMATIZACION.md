@@ -23,7 +23,7 @@ Los intentos son idempotentes. Si los archivos oficiales conservan los mismos SH
 ```text
 GitHub Actions (schedule o workflow_dispatch)
   ├─ prueba acceso directo al recurso oficial
-  ├─ si el portal bloquea la IP del runner, activa Cloudflare WARP
+  ├─ si el portal bloquea la IP del runner, usa SOURCE_HTTPS_PROXY
   ├─ descarga y valida los dos XLSX oficiales
   ├─ compara SHA-256 con las fuentes versionadas
   ├─ reconstruye y verifica ambos CSV cuando hay cambios
@@ -32,7 +32,9 @@ GitHub Actions (schedule o workflow_dispatch)
   └─ publica y comprueba el CSV de GitHub Pages
 ```
 
-El portal de Datos Abiertos Ecuador ha respondido HTTP 403 a direcciones de GitHub. Para mantener la operación completamente remota, el workflow instala el cliente oficial de Cloudflare WARP únicamente cuando falla la ruta directa. La instalación usa el repositorio firmado de Cloudflare y no requiere secretos ni infraestructura propia.
+El portal de Datos Abiertos Ecuador responde HTTP 403 a los runners Linux, macOS y Windows de GitHub, incluso cuando usan Cloudflare WARP. Para mantener la operación completamente remota, el repositorio admite el secreto `SOURCE_HTTPS_PROXY`, con una URL de proxy HTTPS administrado en formato `http://usuario:contraseña@host:puerto`. El secreto solo se inyecta en los pasos de prueba y descarga; GitHub oculta su valor en los registros.
+
+La ruta alternativa no reduce los controles de integridad: los archivos recibidos todavía deben ser XLSX válidos, superar el tamaño mínimo, contener la tabla esperada y producir conteos exactos.
 
 ## Eventos
 
@@ -41,6 +43,16 @@ El portal de Datos Abiertos Ecuador ha respondido HTTP 403 a direcciones de GitH
 - `push` sobre scripts, pruebas, dependencias o el propio workflow: reconstruye y valida los datos versionados, pero no consulta la fuente ni crea commits.
 
 Esta separación evita ciclos: el commit automático de datos no dispara una segunda actualización.
+
+## Secreto requerido por el portal
+
+Mientras el portal mantenga el bloqueo de infraestructura de nube, configure en `Settings → Secrets and variables → Actions`:
+
+| Secreto | Contenido |
+|---|---|
+| `SOURCE_HTTPS_PROXY` | URL completa de un proxy HTTPS administrado con salida aceptada por el portal |
+
+No guarde la URL ni sus credenciales en el repositorio. Si la ruta directa vuelve a funcionar, el workflow la prefiere y no utiliza el secreto.
 
 ## Controles obligatorios
 

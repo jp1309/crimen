@@ -77,8 +77,8 @@ Luego compruebe:
 
 | Síntoma | Causa probable | Acción segura |
 |---|---|---|
-| HTTP 403 al consultar CKAN | El portal bloqueó la dirección del runner | El workflow activa Cloudflare WARP y reintenta por las URLs oficiales estables |
-| WARP no conecta | Incidente transitorio de Cloudflare o del runner | No se publica nada; relanzar `Run workflow` o esperar la siguiente fecha programada |
+| HTTP 403 al consultar CKAN | El portal bloqueó la dirección del runner | Configurar o revisar `SOURCE_HTTPS_PROXY`; el workflow reintenta por las URLs oficiales estables |
+| Proxy no conecta | Credencial vencida, cuota agotada o salida bloqueada | Renovar el secreto y relanzar `Run workflow`; no se publica ningún dato parcial |
 | Tiempo de espera o error DNS | Incidente transitorio de red o portal | Ejecutar `--dry-run` más tarde; no sustituir los XLSX manualmente |
 | Archivo menor a 50 KB o XLSX inválido | Respuesta HTML, descarga incompleta o formato oficial roto | Conservar las fuentes locales; inspeccionar la publicación y adaptar una prueba antes del código |
 | No se detecta una tabla con `PROVINCIA` | Cambió la hoja o la fila de encabezado | Revisar el Excel nuevo, ajustar la detección y agregar una prueba representativa |

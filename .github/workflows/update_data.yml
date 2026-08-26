@@ -74,59 +74,41 @@ jobs:
         shell: bash
         env:
           SOURCE_URL: https://www.datosabiertos.gob.ec/dataset/0ec65ab4-e6ab-40ab-aab9-c91e912f9faf/resource/cb8f704e-2b27-4d7f-9431-d40c4e27fa48/download
+          SOURCE_HTTPS_PROXY: ${{ secrets.SOURCE_HTTPS_PROXY }}
         run: |
           set -euo pipefail
-          if curl \
-            --fail \
-            --location \
-            --silent \
-            --show-error \
-            --connect-timeout 15 \
-            --max-time 45 \
-            --range 0-1023 \
-            --output /dev/null \
-            --user-agent "Mozilla/5.0 (X11; Linux x86_64) Chrome/131.0.0.0 Safari/537.36" \
-            "$SOURCE_URL"; then
-            echo "use_warp=false" >> "$GITHUB_OUTPUT"
+          probe_source() {
+            curl "$@" \
+              --fail \
+              --location \
+              --silent \
+              --show-error \
+              --connect-timeout 15 \
+              --max-time 45 \
+              --range 0-1023 \
+              --output /dev/null \
+              --user-agent "Mozilla/5.0 (X11; Linux x86_64) Chrome/131.0.0.0 Safari/537.36" \
+              "$SOURCE_URL"
+          }
+
+          if probe_source; then
+            echo "use_proxy=false" >> "$GITHUB_OUTPUT"
             echo "La fuente oficial acepta la salida directa del runner."
+          elif [[ -n "$SOURCE_HTTPS_PROXY" ]] && \
+               probe_source --proxy "$SOURCE_HTTPS_PROXY"; then
+            echo "use_proxy=true" >> "$GITHUB_OUTPUT"
+            echo "La fuente oficial acepta la salida remota administrada."
           else
-            echo "use_warp=true" >> "$GITHUB_OUTPUT"
-            echo "La fuente bloquea la salida directa; se activara WARP."
-          fi
-
-      - name: Activar ruta remota alternativa con Cloudflare WARP
-        if: steps.route.outputs.use_warp == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
-            | sudo gpg --yes --dearmor \
-                --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ noble main" \
-            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list >/dev/null
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq cloudflare-warp
-          sudo warp-cli --accept-tos registration new
-          sudo warp-cli --accept-tos mode warp+doh
-          sudo warp-cli --accept-tos connect
-
-          connected=false
-          for attempt in {1..30}; do
-            if curl --fail --silent --max-time 10 \
-              https://www.cloudflare.com/cdn-cgi/trace | grep -q '^warp=on$'; then
-              connected=true
-              break
-            fi
-            sleep 2
-          done
-          if [[ "$connected" != "true" ]]; then
-            sudo warp-cli --accept-tos status || true
-            echo "WARP no establecio una ruta remota util." >&2
+            echo "El portal bloquea los runners de GitHub y no existe una ruta remota funcional." >&2
+            echo "Configure el secreto SOURCE_HTTPS_PROXY con un proxy HTTPS administrado." >&2
             exit 1
           fi
 
       - name: Sincronizar fuentes oficiales
         id: sync
+        env:
+          HTTPS_PROXY: ${{ steps.route.outputs.use_proxy == 'true' && secrets.SOURCE_HTTPS_PROXY || '' }}
+          https_proxy: ${{ steps.route.outputs.use_proxy == 'true' && secrets.SOURCE_HTTPS_PROXY || '' }}
         run: python -m scripts.descargar_datos --github-output "$GITHUB_OUTPUT"
 
       - name: Reconstruir y verificar datos acumulativos
