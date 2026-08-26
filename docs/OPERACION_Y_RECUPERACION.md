@@ -2,7 +2,11 @@
 
 ## Flujo normal
 
-La vía normal es la automatización descrita en [AUTOMATIZACION.md](AUTOMATIZACION.md). Este procedimiento manual existe para verificar el sistema, recuperar una tarea fallida o realizar una actualización supervisada.
+La vía normal es el workflow remoto descrito en [AUTOMATIZACION.md](AUTOMATIZACION.md). No existe una tarea local necesaria para mantener los datos. Este procedimiento manual se conserva únicamente para desarrollo y diagnóstico.
+
+## Reintento remoto
+
+Abra [Actualizar datos y dashboard](https://github.com/jp1309/crimen/actions/workflows/update_data.yml), seleccione `Run workflow` y ejecute `main`. El runner remoto descargará, validará, guardará y publicará cualquier cambio oficial.
 
 ## Actualización manual segura
 
@@ -73,7 +77,8 @@ Luego compruebe:
 
 | Síntoma | Causa probable | Acción segura |
 |---|---|---|
-| HTTP 403 al consultar CKAN | El portal bloqueó la firma o dirección del cliente | El sincronizador reintenta con `curl` y recursos estables. Si ambos fallan, no modifique datos y espere el siguiente intento |
+| HTTP 403 al consultar CKAN | El portal bloqueó la dirección del runner | El workflow activa Cloudflare WARP y reintenta por las URLs oficiales estables |
+| WARP no conecta | Incidente transitorio de Cloudflare o del runner | No se publica nada; relanzar `Run workflow` o esperar la siguiente fecha programada |
 | Tiempo de espera o error DNS | Incidente transitorio de red o portal | Ejecutar `--dry-run` más tarde; no sustituir los XLSX manualmente |
 | Archivo menor a 50 KB o XLSX inválido | Respuesta HTML, descarga incompleta o formato oficial roto | Conservar las fuentes locales; inspeccionar la publicación y adaptar una prueba antes del código |
 | No se detecta una tabla con `PROVINCIA` | Cambió la hoja o la fila de encabezado | Revisar el Excel nuevo, ajustar la detección y agregar una prueba representativa |

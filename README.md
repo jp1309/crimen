@@ -54,7 +54,7 @@ El pipeline también detiene la ejecución si el histórico y el archivo actual 
 ## Documentación
 
 - [Índice de documentación](docs/README.md)
-- [Automatización mensual](docs/AUTOMATIZACION.md): horario, configuración y recreación de la tarea local.
+- [Automatización mensual](docs/AUTOMATIZACION.md): horario y operación íntegramente remota en GitHub Actions.
 - [Operación y recuperación](docs/OPERACION_Y_RECUPERACION.md): actualización manual, fallos, transición anual y reversión.
 - [Diccionario de datos](docs/DICCIONARIO_DATOS.md): granularidad, 37 columnas, valores faltantes y campos derivados.
 - [Arquitectura del frontend](docs/ARQUITECTURA_FRONTEND.md): carga, filtros, vistas, mapa, dependencias y publicación.
@@ -62,11 +62,11 @@ El pipeline también detiene la ejecución si el histórico y el archivo actual 
 
 ## Actualización automática
 
-La descarga se ejecuta mediante una automatización local de Codex asociada a este proyecto. Consulta a las 09:17, hora local del entorno, los días 15, 18, 21, 24, 27 y 30. Las revisiones de los días 2, 5, 8 y 11 permiten continuar si la publicación se retrasa hasta el mes siguiente. La configuración reproducible y la instrucción completa están en [Automatización mensual](docs/AUTOMATIZACION.md).
+La descarga se ejecuta íntegramente en [GitHub Actions](.github/workflows/update_data.yml), sin depender de Codex ni de una computadora encendida. Consulta a las 09:17, `America/New_York`, los días 15, 18, 21, 24, 27 y 30. Las revisiones de los días 2, 5, 8 y 11 cubren publicaciones retrasadas hasta el mes siguiente.
 
-Esta separación es intencional: el portal oficial bloquea las direcciones IP de los runners alojados de GitHub, pero permite la descarga desde el entorno local del proyecto. Después de cada actualización, el `push` activa [`.github/workflows/update_data.yml`](.github/workflows/update_data.yml), que reconstruye, verifica y publica el dashboard.
+El portal oficial puede bloquear las direcciones IP de los runners de GitHub. El workflow prueba primero la ruta directa y, ante un bloqueo, activa temporalmente el cliente oficial de Cloudflare WARP. Todo el ciclo sigue ocurriendo dentro del runner remoto y no requiere secretos ni infraestructura propia.
 
-Cada intento local:
+Cada intento remoto:
 
 1. Consulta la [API oficial del conjunto](https://www.datosabiertos.gob.ec/api/3/action/package_show?id=homicidios-intencionales). Si el catálogo bloquea la API desde GitHub Actions, usa las URLs oficiales estables de ambos recursos.
 2. Descarga y valida las fuentes histórica y anual.
@@ -75,9 +75,9 @@ Cada intento local:
 5. Si cambiaron, reemplaza las fuentes de forma atómica y reconstruye todos los datos.
 6. Exige igualdad exacta entre los conteos por año de los Excel y del CSV final.
 7. Guarda un único commit y hace `push` a `main`.
-8. GitHub Actions repite el QA y GitHub Pages publica el dashboard.
+8. Solicita la publicación de GitHub Pages y comprueba el SHA-256 del CSV público.
 
-El workflow de reconstrucción también puede ejecutarse manualmente desde la pestaña **Actions**; la descarga oficial se realiza desde la automatización local. Consulte [Operación y recuperación](docs/OPERACION_Y_RECUPERACION.md) antes de intervenir manualmente.
+El mismo workflow puede ejecutarse inmediatamente desde la pestaña **Actions** mediante `Run workflow`.
 
 ## Ejecución local
 
