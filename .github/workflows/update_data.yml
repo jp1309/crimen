@@ -108,7 +108,6 @@ jobs:
         id: sync
         env:
           HTTPS_PROXY: ${{ steps.route.outputs.use_proxy == 'true' && secrets.SOURCE_HTTPS_PROXY || '' }}
-          https_proxy: ${{ steps.route.outputs.use_proxy == 'true' && secrets.SOURCE_HTTPS_PROXY || '' }}
         run: python -m scripts.descargar_datos --github-output "$GITHUB_OUTPUT"
 
       - name: Reconstruir y verificar datos acumulativos
