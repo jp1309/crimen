@@ -77,11 +77,12 @@ Luego compruebe:
 
 | Síntoma | Causa probable | Acción segura |
 |---|---|---|
-| HTTP 403 al consultar CKAN | El portal bloqueó la dirección del runner | Configurar o revisar `SOURCE_HTTPS_PROXY`; el workflow reintenta por las URLs oficiales estables |
+| HTTP 403 al consultar CKAN | El portal bloqueó una dirección de centro de datos | Configurar o revisar `SOURCE_HTTPS_PROXY` con salida ISP/residencial; GitHub, WARP y relays serverless convencionales también son bloqueados |
 | Proxy no conecta | Credencial vencida, cuota agotada o salida bloqueada | Renovar el secreto y relanzar `Run workflow`; no se publica ningún dato parcial |
 | Tiempo de espera o error DNS | Incidente transitorio de red o portal | Ejecutar `--dry-run` más tarde; no sustituir los XLSX manualmente |
 | Archivo menor a 50 KB o XLSX inválido | Respuesta HTML, descarga incompleta o formato oficial roto | Conservar las fuentes locales; inspeccionar la publicación y adaptar una prueba antes del código |
 | No se detecta una tabla con `PROVINCIA` | Cambió la hoja o la fila de encabezado | Revisar el Excel nuevo, ajustar la detección y agregar una prueba representativa |
+| Issue `[Automatizacion]` abierto | La última ejecución remota falló | Abrir el enlace de ejecución agregado al issue; al recuperarse, el workflow cerrará el incidente automáticamente |
 | Años solapados entre histórico y actual | Transición anual inconsistente del portal o clasificación incorrecta | Detener el proceso; no eliminar filas ni deduplicar a mano. Esperar una publicación coherente o corregir la selección de fuentes |
 | Total o conteo anual distinto | Transformación que perdió, duplicó o alteró filas | No publicar. Comparar primero el consolidado con cada Excel y revisar `limpiar_datos.py` |
 | Baja cobertura de coordenadas | La fuente usa ceros o no georreferencia algunos periodos | El dashboard sigue siendo válido para análisis no espaciales; documentar la cobertura y no inventar coordenadas |

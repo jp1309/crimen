@@ -64,7 +64,7 @@ El pipeline también detiene la ejecución si el histórico y el archivo actual 
 
 La descarga se ejecuta íntegramente en [GitHub Actions](.github/workflows/update_data.yml), sin depender de Codex ni de una computadora encendida. Consulta a las 09:17, `America/New_York`, los días 15, 18, 21, 24, 27 y 30. Las revisiones de los días 2, 5, 8 y 11 cubren publicaciones retrasadas hasta el mes siguiente.
 
-El portal oficial bloquea las direcciones de los runners de GitHub. El workflow prueba primero la ruta directa y, ante un bloqueo, usa el secreto `SOURCE_HTTPS_PROXY`, que debe contener la URL de un proxy HTTPS administrado. Todo el ciclo ocurre dentro del runner remoto; no depende de una computadora ni de una tarea local.
+El portal oficial bloquea las direcciones de centros de datos, incluidos los runners de GitHub y relays serverless convencionales. El workflow prueba primero la ruta directa y, ante un bloqueo, usa el secreto `SOURCE_HTTPS_PROXY`, que debe contener la URL de un proxy HTTPS administrado con salida ISP/residencial. Una vez configurado ese secreto, todo el ciclo ocurre dentro del runner remoto y no depende de Codex ni de una computadora encendida.
 
 Cada intento remoto:
 
@@ -76,6 +76,8 @@ Cada intento remoto:
 6. Exige igualdad exacta entre los conteos por año de los Excel y del CSV final.
 7. Guarda un único commit y hace `push` a `main`.
 8. Solicita la publicación de GitHub Pages y comprueba el SHA-256 del CSV público.
+
+Cuando una ejecución falla, el workflow crea o actualiza un único issue operativo. La siguiente ejecución correcta cierra el incidente automáticamente. La comparación con Pages admite únicamente la conversión CRLF→LF que realiza la publicación estática; cualquier diferencia de contenido sigue siendo un error.
 
 El mismo workflow puede ejecutarse inmediatamente desde la pestaña **Actions** mediante `Run workflow`.
 

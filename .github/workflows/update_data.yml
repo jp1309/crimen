@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
   pages: write
 
 concurrency:
@@ -69,7 +70,7 @@ jobs:
       - name: Instalar dependencias
         run: python -m pip install --requirement requirements.txt
 
-      - name: Comprobar acceso directo a la fuente oficial
+      - name: Comprobar acceso a la fuente oficial
         id: route
         shell: bash
         env:
@@ -97,10 +98,10 @@ jobs:
           elif [[ -n "$SOURCE_HTTPS_PROXY" ]] && \
                probe_source --proxy "$SOURCE_HTTPS_PROXY"; then
             echo "use_proxy=true" >> "$GITHUB_OUTPUT"
-            echo "La fuente oficial acepta la salida remota administrada."
+            echo "La fuente oficial acepta la salida administrada."
           else
-            echo "El portal bloquea los runners de GitHub y no existe una ruta remota funcional." >&2
-            echo "Configure el secreto SOURCE_HTTPS_PROXY con un proxy HTTPS administrado." >&2
+            echo "El portal bloquea los runners de GitHub y no existe una salida administrada funcional." >&2
+            echo "Configure SOURCE_HTTPS_PROXY con un proxy ISP/residencial administrado." >&2
             exit 1
           fi
 
@@ -109,6 +110,16 @@ jobs:
         env:
           HTTPS_PROXY: ${{ steps.route.outputs.use_proxy == 'true' && secrets.SOURCE_HTTPS_PROXY || '' }}
         run: python -m scripts.descargar_datos --github-output "$GITHUB_OUTPUT"
+
+      - name: Resumir consulta
+        if: always() && steps.sync.outcome == 'success'
+        shell: bash
+        run: |
+          {
+            echo "### Actualizacion de homicidios"
+            echo "- Fuente anual: \`${{ steps.sync.outputs.source_name }}\`"
+            echo "- Cambios oficiales: \`${{ steps.sync.outputs.changed }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Reconstruir y verificar datos acumulativos
         if: steps.sync.outputs.changed == 'true'
@@ -153,25 +164,75 @@ jobs:
 
       - name: Verificar CSV publicado
         if: steps.commit.outputs.changed == 'true'
-        shell: bash
-        env:
-          PUBLIC_CSV: https://jp1309.github.io/crimen/homicidios_clean.csv
-          COMMIT_SHA: ${{ steps.commit.outputs.commit }}
         run: |
-          set -euo pipefail
-          expected=$(sha256sum homicidios_clean.csv | cut -d' ' -f1)
-          for attempt in {1..30}; do
-            if curl --fail --location --silent --show-error \
-              --max-time 60 \
-              --output /tmp/homicidios_public.csv \
-              "${PUBLIC_CSV}?commit=${COMMIT_SHA}"; then
-              actual=$(sha256sum /tmp/homicidios_public.csv | cut -d' ' -f1)
-              if [[ "$actual" == "$expected" ]]; then
-                echo "GitHub Pages sirve el CSV actualizado."
-                exit 0
-              fi
-            fi
-            sleep 10
-          done
-          echo "GitHub Pages no sirvio el CSV esperado dentro del plazo." >&2
-          exit 1
+          python -m scripts.verificar_publicacion \
+            --commit "${{ steps.commit.outputs.commit }}"
+
+  report-failure:
+    name: Registrar incidente de automatizacion
+    if: always() && needs.update-data.result == 'failure'
+    needs: update-data
+    runs-on: ubuntu-latest
+    steps:
+      - name: Crear o actualizar incidente
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const title = "[Automatizacion] Actualizacion de homicidios bloqueada";
+            const marker = "<!-- crimen-update-incident -->";
+            const body = `${marker}\nLa automatizacion no pudo completar la consulta, validacion o publicacion.\n\nEjecucion: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = issues.find((issue) => issue.title === title && !issue.pull_request);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }
+
+  close-incident:
+    name: Cerrar incidente recuperado
+    if: always() && needs.update-data.result == 'success'
+    needs: update-data
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cerrar incidente abierto
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const title = "[Automatizacion] Actualizacion de homicidios bloqueada";
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = issues.find((issue) => issue.title === title && !issue.pull_request);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `Recuperado en ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                state: "closed",
+              });
+            }
