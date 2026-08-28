@@ -1,68 +1,48 @@
-# Automatización remota mensual
+# Automatización mensual supervisada
 
 ## Objetivo
 
-La actualización se ejecuta íntegramente en GitHub Actions. No depende de Codex, de una computadora encendida ni de una tarea programada fuera del repositorio.
+La actualización usa una tarea local de Codex asociada a este proyecto. Codex consulta las fuentes oficiales, ejecuta el pipeline y, si encuentra datos nuevos y todos los controles pasan, crea un commit acotado y lo publica en `main`.
+
+Esta arquitectura no utiliza proxies, relays ni servicios de pago. La computadora que contiene el repositorio debe estar disponible durante la ejecución programada.
 
 ## Configuración vigente
 
 | Propiedad | Valor |
 |---|---|
-| Workflow | `Actualizar datos y dashboard` |
-| Archivo | `.github/workflows/update_data.yml` |
-| Entorno | GitHub-hosted runner `ubuntu-24.04` |
+| Tarea de Codex | `Actualizar dashboard de homicidios` |
+| Entorno | Local, dentro del proyecto `crimen` |
 | Rama de publicación | `main` |
 | Hora | 09:17, `America/New_York` |
 | Días | 2, 5, 8, 11, 15, 18, 21, 24, 27 y 30 |
-| Ejecución manual | `workflow_dispatch` |
+| Verificación remota | Workflow `Actualizar datos y dashboard` |
 
-Los intentos son idempotentes. Si los archivos oficiales conservan los mismos SHA-256, el workflow termina sin commit y vuelve a consultar en la siguiente fecha.
+Los intentos son idempotentes. Si los archivos oficiales conservan los mismos SHA-256, la tarea termina sin reconstruir, crear commits ni publicar.
 
-## Flujo remoto
+## Flujo
 
 ```text
-GitHub Actions (schedule o workflow_dispatch)
-  ├─ prueba acceso directo al recurso oficial
-  ├─ si el portal bloquea la IP del runner, usa SOURCE_HTTPS_PROXY
+Automatización local de Codex
+  ├─ sincroniza main por avance rápido seguro
+  ├─ preserva todos los cambios y artefactos ajenos
   ├─ descarga y valida los dos XLSX oficiales
   ├─ compara SHA-256 con las fuentes versionadas
   ├─ reconstruye y verifica ambos CSV cuando hay cambios
   ├─ ejecuta las pruebas unitarias
-  ├─ crea un único commit y hace push a main
-  └─ publica y comprueba el CSV de GitHub Pages
+  ├─ prepara únicamente los cinco archivos canónicos
+  ├─ crea un commit y hace push a main
+  └─ sigue GitHub Actions y GitHub Pages hasta verificar el CSV público
 ```
 
-El portal de Datos Abiertos Ecuador responde HTTP 403 a los runners Linux, macOS y Windows de GitHub, incluso cuando usan Cloudflare WARP. También se verificó que un Cloudflare Worker y proxies públicos de centro de datos reciben 403. Por tanto, un relay serverless convencional no resuelve el bloqueo.
+El portal de Datos Abiertos Ecuador puede bloquear direcciones de centros de datos, incluidos los runners de GitHub. Por esa razón GitHub Actions no intenta descargar las fuentes: la consulta ocurre desde el entorno local de Codex, que ya ha demostrado acceso al portal cuando este está disponible.
 
-Para mantener la operación completamente remota, el repositorio admite el secreto `SOURCE_HTTPS_PROXY`, con una URL de proxy HTTPS administrado y salida ISP/residencial en formato `http://usuario:contraseña@host:puerto`. El secreto solo se inyecta en los pasos de prueba y descarga; GitHub oculta su valor en los registros. Después de esta configuración única, ninguna ejecución depende de Codex o de una máquina local.
+## Separación de responsabilidades
 
-La ruta alternativa no reduce los controles de integridad: los archivos recibidos todavía deben ser XLSX válidos, superar el tamaño mínimo, contener la tabla esperada y producir conteos exactos.
+- Codex local: consulta la fuente, detecta cambios, reconstruye, valida, crea el commit y hace `push`.
+- GitHub Actions: reconstruye y valida los datos ya versionados en cada `push` relevante. No modifica el repositorio.
+- GitHub Pages: publica `main`; Codex comprueba que el CSV público corresponde al commit nuevo.
 
-## Eventos
-
-- `schedule`: consulta y actualiza los datos automáticamente.
-- `workflow_dispatch`: permite una actualización remota inmediata desde la pestaña Actions.
-- `push` sobre scripts, pruebas, dependencias o el propio workflow: reconstruye y valida los datos versionados, pero no consulta la fuente ni crea commits.
-
-Esta separación evita ciclos: el commit automático de datos no dispara una segunda actualización.
-
-## Configuración única requerida por el portal
-
-Mientras el portal mantenga el bloqueo de infraestructura de nube, configure en `Settings → Secrets and variables → Actions`:
-
-| Secreto | Contenido |
-|---|---|
-| `SOURCE_HTTPS_PROXY` | URL completa de un proxy HTTPS administrado con salida ISP/residencial aceptada por el portal |
-
-El proveedor debe admitir HTTPS CONNECT, credenciales en URL y al menos 100 MB mensuales. Conviene restringir el destino a `www.datosabiertos.gob.ec` si el proveedor ofrece listas permitidas. No use proxies públicos ni relays genéricos: además de ser inestables, no establecen una cadena de confianza operativa adecuada.
-
-Configure el secreto una sola vez:
-
-```bash
-gh secret set SOURCE_HTTPS_PROXY --repo jp1309/crimen
-```
-
-El comando solicita el valor sin imprimirlo. No guarde la URL ni sus credenciales en el repositorio. Si la ruta directa vuelve a funcionar, el workflow la prefiere y no utiliza el secreto.
+El workflow remoto también admite `workflow_dispatch` para volver a verificar manualmente el estado versionado, pero no descarga información oficial.
 
 ## Controles obligatorios
 
@@ -74,21 +54,12 @@ Una actualización solo se publica si:
 4. Los conteos de los Excel y del CSV coinciden exactamente por año.
 5. Terminan correctamente las verificaciones geográficas y las pruebas unitarias.
 6. El commit incluye exclusivamente los cinco artefactos de datos autorizados.
-7. GitHub Pages sirve un CSV cuyo SHA-256 coincide con el generado.
+7. GitHub Actions termina correctamente y GitHub Pages sirve el CSV esperado.
 
-GitHub Pages normaliza los saltos CRLF del CSV versionado a LF. La verificación remota normaliza exclusivamente esos saltos antes de comparar SHA-256; no permite ninguna diferencia de datos.
-
-Ante cualquier fallo no se publica un conjunto parcial. La siguiente fecha programada vuelve a intentarlo.
+Ante un fallo del portal o de GitHub no se publica un conjunto parcial. La tarea informa el incidente en Codex y el siguiente intento programado vuelve a consultar.
 
 ## Supervisión
 
-La pestaña [Actions](https://github.com/jp1309/crimen/actions/workflows/update_data.yml) contiene el historial completo, incluidos los intentos sin cambios y los errores de red. El badge del README refleja el estado del último workflow.
+Los resultados de la tarea aparecen en Codex. La pestaña [Actions](https://github.com/jp1309/crimen/actions/workflows/update_data.yml) contiene la validación de cada publicación, y el dashboard queda disponible en [GitHub Pages](https://jp1309.github.io/crimen/).
 
-Si una ejecución programada o manual falla, el job `Registrar incidente de automatizacion` crea un issue único o agrega la nueva ejecución al incidente ya abierto. Cuando el workflow vuelve a terminar correctamente, `Cerrar incidente recuperado` comenta y cierra ese issue. Así los fallos repetidos son visibles sin crear ruido duplicado.
-
-Para forzar una revisión remota:
-
-1. Abra `Actions`.
-2. Seleccione `Actualizar datos y dashboard`.
-3. Use `Run workflow` sobre `main`.
-4. Compruebe los pasos de sincronización, validación, commit y publicación.
+Para solicitar una revisión inmediata, abra este proyecto en Codex y pida actualizar el dashboard. El procedimiento operativo detallado está en [OPERACION_Y_RECUPERACION.md](OPERACION_Y_RECUPERACION.md).

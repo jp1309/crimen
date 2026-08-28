@@ -1,11 +1,6 @@
 name: Actualizar datos y dashboard
 
 on:
-  schedule:
-    # El Ministerio suele publicar a mitad de mes. Los intentos posteriores
-    # cubren retrasos sin depender de una computadora o tarea local.
-    - cron: "17 9 2,5,8,11,15,18,21,24,27,30 * *"
-      timezone: "America/New_York"
   workflow_dispatch: {}
   push:
     branches: [main]
@@ -14,19 +9,21 @@ on:
       - "tests/**"
       - "requirements.txt"
       - ".github/workflows/update_data.yml"
+      - "data/raw/mdi_homicidios_intencionales_pm_actual.xlsx"
+      - "data/raw/mdi_homicidios_intencionales_pm_historico.xlsx"
+      - "data/source_manifest.json"
+      - "data/processed/homicidios_consolidado.csv"
+      - "homicidios_clean.csv"
 
 permissions:
-  contents: write
-  issues: write
-  pages: write
+  contents: read
 
 concurrency:
-  group: update-homicidios
+  group: verify-homicidios-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   verify-pipeline:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -49,190 +46,3 @@ jobs:
           python -m scripts.verificar_datos
           python -m scripts.verificar_coordenadas
           python -m unittest discover -v
-
-  update-data:
-    if: github.event_name != 'push'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    steps:
-      - name: Checkout repositorio
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Configurar Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.10"
-          cache: pip
-          cache-dependency-path: requirements.txt
-
-      - name: Instalar dependencias
-        run: python -m pip install --requirement requirements.txt
-
-      - name: Comprobar acceso a la fuente oficial
-        id: route
-        shell: bash
-        env:
-          SOURCE_URL: https://www.datosabiertos.gob.ec/dataset/0ec65ab4-e6ab-40ab-aab9-c91e912f9faf/resource/cb8f704e-2b27-4d7f-9431-d40c4e27fa48/download
-          SOURCE_HTTPS_PROXY: ${{ secrets.SOURCE_HTTPS_PROXY }}
-        run: |
-          set -euo pipefail
-          probe_source() {
-            curl "$@" \
-              --fail \
-              --location \
-              --silent \
-              --show-error \
-              --connect-timeout 15 \
-              --max-time 45 \
-              --range 0-1023 \
-              --output /dev/null \
-              --user-agent "Mozilla/5.0 (X11; Linux x86_64) Chrome/131.0.0.0 Safari/537.36" \
-              "$SOURCE_URL"
-          }
-
-          if probe_source; then
-            echo "use_proxy=false" >> "$GITHUB_OUTPUT"
-            echo "La fuente oficial acepta la salida directa del runner."
-          elif [[ -n "$SOURCE_HTTPS_PROXY" ]] && \
-               probe_source --proxy "$SOURCE_HTTPS_PROXY"; then
-            echo "use_proxy=true" >> "$GITHUB_OUTPUT"
-            echo "La fuente oficial acepta la salida administrada."
-          else
-            echo "El portal bloquea los runners de GitHub y no existe una salida administrada funcional." >&2
-            echo "Configure SOURCE_HTTPS_PROXY con un proxy ISP/residencial administrado." >&2
-            exit 1
-          fi
-
-      - name: Sincronizar fuentes oficiales
-        id: sync
-        env:
-          HTTPS_PROXY: ${{ steps.route.outputs.use_proxy == 'true' && secrets.SOURCE_HTTPS_PROXY || '' }}
-        run: python -m scripts.descargar_datos --github-output "$GITHUB_OUTPUT"
-
-      - name: Resumir consulta
-        if: always() && steps.sync.outcome == 'success'
-        shell: bash
-        run: |
-          {
-            echo "### Actualizacion de homicidios"
-            echo "- Fuente anual: \`${{ steps.sync.outputs.source_name }}\`"
-            echo "- Cambios oficiales: \`${{ steps.sync.outputs.changed }}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Reconstruir y verificar datos acumulativos
-        if: steps.sync.outputs.changed == 'true'
-        run: |
-          python -m scripts.consolidar_y_limpiar
-          python -m scripts.verificar_datos
-          python -m scripts.verificar_coordenadas
-          python -m unittest discover -v
-
-      - name: Guardar actualizacion
-        id: commit
-        if: steps.sync.outputs.changed == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- \
-            data/raw/mdi_homicidios_intencionales_pm_actual.xlsx \
-            data/raw/mdi_homicidios_intencionales_pm_historico.xlsx \
-            data/source_manifest.json \
-            data/processed/homicidios_consolidado.csv \
-            homicidios_clean.csv
-
-          if git diff --staged --quiet; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "La fuente cambio sin producir diferencias versionables."
-            exit 0
-          fi
-
-          git commit -m "Datos: actualizar homicidios desde fuente oficial"
-          git pull --rebase origin main
-          git push origin HEAD:main
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Solicitar publicacion de GitHub Pages
-        if: steps.commit.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh api --method POST "repos/${GITHUB_REPOSITORY}/pages/builds"
-
-      - name: Verificar CSV publicado
-        if: steps.commit.outputs.changed == 'true'
-        run: |
-          python -m scripts.verificar_publicacion \
-            --commit "${{ steps.commit.outputs.commit }}"
-
-  report-failure:
-    name: Registrar incidente de automatizacion
-    if: always() && needs.update-data.result == 'failure'
-    needs: update-data
-    runs-on: ubuntu-latest
-    steps:
-      - name: Crear o actualizar incidente
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const title = "[Automatizacion] Actualizacion de homicidios bloqueada";
-            const marker = "<!-- crimen-update-incident -->";
-            const body = `${marker}\nLa automatizacion no pudo completar la consulta, validacion o publicacion.\n\nEjecucion: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const issues = await github.paginate(github.rest.issues.listForRepo, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: "open",
-              per_page: 100,
-            });
-            const existing = issues.find((issue) => issue.title === title && !issue.pull_request);
-            if (existing) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: existing.number,
-                body,
-              });
-            } else {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                body,
-              });
-            }
-
-  close-incident:
-    name: Cerrar incidente recuperado
-    if: always() && needs.update-data.result == 'success'
-    needs: update-data
-    runs-on: ubuntu-latest
-    steps:
-      - name: Cerrar incidente abierto
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const title = "[Automatizacion] Actualizacion de homicidios bloqueada";
-            const issues = await github.paginate(github.rest.issues.listForRepo, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: "open",
-              per_page: 100,
-            });
-            const existing = issues.find((issue) => issue.title === title && !issue.pull_request);
-            if (existing) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: existing.number,
-                body: `Recuperado en ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}.`,
-              });
-              await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: existing.number,
-                state: "closed",
-              });
-            }

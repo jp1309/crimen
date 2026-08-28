@@ -54,32 +54,32 @@ El pipeline también detiene la ejecución si el histórico y el archivo actual 
 ## Documentación
 
 - [Índice de documentación](docs/README.md)
-- [Automatización mensual](docs/AUTOMATIZACION.md): horario y operación íntegramente remota en GitHub Actions.
+- [Automatización mensual](docs/AUTOMATIZACION.md): revisión local programada con Codex y verificación en GitHub.
 - [Operación y recuperación](docs/OPERACION_Y_RECUPERACION.md): actualización manual, fallos, transición anual y reversión.
 - [Diccionario de datos](docs/DICCIONARIO_DATOS.md): granularidad, 37 columnas, valores faltantes y campos derivados.
 - [Arquitectura del frontend](docs/ARQUITECTURA_FRONTEND.md): carga, filtros, vistas, mapa, dependencias y publicación.
 - [Guía de contribución](CONTRIBUTING.md): reglas para modificar datos y código.
 
-## Actualización automática
+## Actualización mensual supervisada
 
-La descarga se ejecuta íntegramente en [GitHub Actions](.github/workflows/update_data.yml), sin depender de Codex ni de una computadora encendida. Consulta a las 09:17, `America/New_York`, los días 15, 18, 21, 24, 27 y 30. Las revisiones de los días 2, 5, 8 y 11 cubren publicaciones retrasadas hasta el mes siguiente.
+La descarga se ejecuta mediante una automatización local de Codex en este proyecto. No requiere proxies, servicios de pago ni credenciales de terceros. La computadora que aloja el proyecto debe estar disponible cuando se ejecute la tarea; cada resultado queda visible en Codex para su seguimiento.
 
-El portal oficial bloquea las direcciones de centros de datos, incluidos los runners de GitHub y relays serverless convencionales. El workflow prueba primero la ruta directa y, ante un bloqueo, usa el secreto `SOURCE_HTTPS_PROXY`, que debe contener la URL de un proxy HTTPS administrado con salida ISP/residencial. Una vez configurado ese secreto, todo el ciclo ocurre dentro del runner remoto y no depende de Codex ni de una computadora encendida.
+La tarea consulta a las 09:17, `America/New_York`, los días 15, 18, 21, 24, 27 y 30. Las revisiones de los días 2, 5, 8 y 11 cubren publicaciones retrasadas hasta el mes siguiente.
 
-Cada intento remoto:
+Cada intento local:
 
-1. Consulta la [API oficial del conjunto](https://www.datosabiertos.gob.ec/api/3/action/package_show?id=homicidios-intencionales). Si el catálogo bloquea la API desde GitHub Actions, usa las URLs oficiales estables de ambos recursos.
+1. Consulta la [API oficial del conjunto](https://www.datosabiertos.gob.ec/api/3/action/package_show?id=homicidios-intencionales). Si el catálogo bloquea temporalmente la API, usa las URLs oficiales estables de ambos recursos.
 2. Descarga y valida las fuentes histórica y anual.
 3. Compara sus SHA-256 con las copias locales.
 4. Si no cambiaron, termina sin crear un commit.
 5. Si cambiaron, reemplaza las fuentes de forma atómica y reconstruye todos los datos.
 6. Exige igualdad exacta entre los conteos por año de los Excel y del CSV final.
 7. Guarda un único commit y hace `push` a `main`.
-8. Solicita la publicación de GitHub Pages y comprueba el SHA-256 del CSV público.
+8. Sigue la verificación de GitHub Actions y la publicación de GitHub Pages hasta comprobar el CSV público.
 
-Cuando una ejecución falla, el workflow crea o actualiza un único issue operativo. La siguiente ejecución correcta cierra el incidente automáticamente. La comparación con Pages admite únicamente la conversión CRLF→LF que realiza la publicación estática; cualquier diferencia de contenido sigue siendo un error.
+Si el portal bloquea temporalmente el acceso o todavía no existe una publicación nueva, la tarea informa el resultado y no modifica los datos. La comparación con Pages admite únicamente la conversión CRLF→LF que realiza la publicación estática; cualquier diferencia de contenido sigue siendo un error.
 
-El mismo workflow puede ejecutarse inmediatamente desde la pestaña **Actions** mediante `Run workflow`.
+[GitHub Actions](.github/workflows/update_data.yml) ya no descarga fuentes oficiales. Verifica los datos versionados después de cada `push` relevante y también puede ejecutarse desde la pestaña **Actions** mediante `Run workflow`.
 
 ## Ejecución local
 
@@ -170,7 +170,7 @@ python -m scripts.verificar_coordenadas
 
 - Frontend: JavaScript, Chart.js, Leaflet, Tailwind CSS y PapaParse.
 - Datos: Python, pandas, openpyxl y Unidecode.
-- Automatización: GitHub Actions y GitHub Pages.
+- Automatización: Codex local, GitHub Actions y GitHub Pages.
 
 ## Licencia y fuente
 

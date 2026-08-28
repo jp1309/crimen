@@ -2,11 +2,11 @@
 
 ## Flujo normal
 
-La vía normal es el workflow remoto descrito en [AUTOMATIZACION.md](AUTOMATIZACION.md). No existe una tarea local necesaria para mantener los datos. Este procedimiento manual se conserva únicamente para desarrollo y diagnóstico.
+La vía normal es la tarea local de Codex descrita en [AUTOMATIZACION.md](AUTOMATIZACION.md). Codex ejecuta este mismo procedimiento, publica únicamente cuando detecta fuentes nuevas y sigue la validación remota hasta GitHub Pages.
 
-## Reintento remoto
+## Reintento supervisado
 
-Abra [Actualizar datos y dashboard](https://github.com/jp1309/crimen/actions/workflows/update_data.yml), seleccione `Run workflow` y ejecute `main`. El runner remoto descargará, validará, guardará y publicará cualquier cambio oficial.
+Solicite la actualización desde el proyecto `crimen` en Codex. GitHub Actions no descarga la fuente oficial: `Run workflow` solo reconstruye y valida los archivos ya versionados.
 
 ## Actualización manual segura
 
@@ -77,12 +77,10 @@ Luego compruebe:
 
 | Síntoma | Causa probable | Acción segura |
 |---|---|---|
-| HTTP 403 al consultar CKAN | El portal bloqueó una dirección de centro de datos | Configurar o revisar `SOURCE_HTTPS_PROXY` con salida ISP/residencial; GitHub, WARP y relays serverless convencionales también son bloqueados |
-| Proxy no conecta | Credencial vencida, cuota agotada o salida bloqueada | Renovar el secreto y relanzar `Run workflow`; no se publica ningún dato parcial |
+| HTTP 403 al consultar CKAN | El portal bloqueó temporalmente el acceso local | No sustituir la fuente ni usar proxies públicos; dejar el intento fallido para que la tarea local vuelva a consultar |
 | Tiempo de espera o error DNS | Incidente transitorio de red o portal | Ejecutar `--dry-run` más tarde; no sustituir los XLSX manualmente |
 | Archivo menor a 50 KB o XLSX inválido | Respuesta HTML, descarga incompleta o formato oficial roto | Conservar las fuentes locales; inspeccionar la publicación y adaptar una prueba antes del código |
 | No se detecta una tabla con `PROVINCIA` | Cambió la hoja o la fila de encabezado | Revisar el Excel nuevo, ajustar la detección y agregar una prueba representativa |
-| Issue `[Automatizacion]` abierto | La última ejecución remota falló | Abrir el enlace de ejecución agregado al issue; al recuperarse, el workflow cerrará el incidente automáticamente |
 | Años solapados entre histórico y actual | Transición anual inconsistente del portal o clasificación incorrecta | Detener el proceso; no eliminar filas ni deduplicar a mano. Esperar una publicación coherente o corregir la selección de fuentes |
 | Total o conteo anual distinto | Transformación que perdió, duplicó o alteró filas | No publicar. Comparar primero el consolidado con cada Excel y revisar `limpiar_datos.py` |
 | Baja cobertura de coordenadas | La fuente usa ceros o no georreferencia algunos periodos | El dashboard sigue siendo válido para análisis no espaciales; documentar la cobertura y no inventar coordenadas |
