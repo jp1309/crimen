@@ -2,37 +2,37 @@
   "dataset": {
     "api_url": "https://www.datosabiertos.gob.ec/api/3/action/package_show?id=homicidios-intencionales",
     "id": "0ec65ab4-e6ab-40ab-aab9-c91e912f9faf",
-    "metadata_modified": "2026-08-19T21:24:14.992104",
+    "metadata_modified": "2026-09-18T20:30:50.435583",
     "name": "homicidios-intencionales",
     "update_frequency": [
       "Mensual"
     ]
   },
-  "downloaded_at": "2026-08-27T18:57:05.848591+00:00",
+  "downloaded_at": "2026-09-27T15:22:03.900358+00:00",
   "resources": {
     "actual": {
       "download_url": "https://www.datosabiertos.gob.ec/dataset/0ec65ab4-e6ab-40ab-aab9-c91e912f9faf/resource/cb8f704e-2b27-4d7f-9431-d40c4e27fa48/download",
       "header_row": 1,
-      "last_modified": "2026-08-19T21:21:38.351138",
+      "last_modified": "2026-09-18T20:06:34.018202",
       "local_path": "data/raw/mdi_homicidios_intencionales_pm_actual.xlsx",
-      "official_name": "mdi_homicidios_intencionales_pm_2026_enero_julio.xlsx",
-      "official_url": "https://www.datosabiertos.gob.ec/dataset/0ec65ab4-e6ab-40ab-aab9-c91e912f9faf/resource/cb8f704e-2b27-4d7f-9431-d40c4e27fa48/download/mdi_homicidiosintencionalse_pm_2026_enero_julio.xlsx",
+      "official_name": "mdi_homicidios_intencionales_pm_2026 │enero_agosto.xlsx",
+      "official_url": "https://www.datosabiertos.gob.ec/dataset/0ec65ab4-e6ab-40ab-aab9-c91e912f9faf/resource/cb8f704e-2b27-4d7f-9431-d40c4e27fa48/download/mdi_homicidiosintencionales_pm_2026_enero_agosto.xlsx",
       "resource_id": "cb8f704e-2b27-4d7f-9431-d40c4e27fa48",
-      "sha256": "5fe73812a841aead34c31cc4e5a63cd2f72e093761f5ccf09b2673786910ab47",
+      "sha256": "24525b09704d06eec548266d5692596ae08c68cbf3f6b9c5ef116a1dce4dbeb0",
       "sheet": "1. Homicidios Intencionales",
-      "size": 845816
+      "size": 981183
     },
     "historico": {
       "download_url": "https://www.datosabiertos.gob.ec/dataset/0ec65ab4-e6ab-40ab-aab9-c91e912f9faf/resource/36b055c8-e10c-4e57-ba25-3046ca5ef15d/download",
       "header_row": 1,
-      "last_modified": "2026-08-19T21:24:14.980163",
+      "last_modified": "2026-09-18T20:13:39.294846",
       "local_path": "data/raw/mdi_homicidios_intencionales_pm_historico.xlsx",
       "official_name": "mdi_homicidios_intencionales_pm_2014-2025.xlsx",
       "official_url": "https://www.datosabiertos.gob.ec/dataset/0ec65ab4-e6ab-40ab-aab9-c91e912f9faf/resource/36b055c8-e10c-4e57-ba25-3046ca5ef15d/download/mdi_homicidiosintencionales_pm_2014_2025.xlsx",
       "resource_id": "36b055c8-e10c-4e57-ba25-3046ca5ef15d",
-      "sha256": "4a929285b53d7da323a65e12256630317912167fcdb9fc74f5d58284820d54d8",
+      "sha256": "a87131539f0dd979ca913e77f4eaac4c5b13906be41d83114b8b94798a248ee0",
       "sheet": "1. Homicidios Intencionales",
-      "size": 6721438
+      "size": 6718875
     }
   },
   "schema_version": 1
