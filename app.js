@@ -812,10 +812,10 @@ function renderGeoRanking(data) {
 function renderMap(data) {
     if (!mapInstance) {
         mapInstance = L.map('map', { zoomControl: false }).setView([-1.8312, -78.1834], 6);
-        // Voyager style shows roads, highways, and labels
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd',
+        // The standard OpenStreetMap tiles do not require an API key. CARTO
+        // Voyager displays an "API KEY REQUIRED" watermark when unauthenticated.
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
             maxZoom: 19,
             minZoom: 5
         }).addTo(mapInstance);

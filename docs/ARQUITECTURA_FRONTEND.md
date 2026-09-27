@@ -84,7 +84,7 @@ El periodo predeterminado comienza en enero del año anterior y termina en el ú
 ## Mapa
 
 - Biblioteca: Leaflet.
-- Cartografía base: CARTO Voyager con atribución a OpenStreetMap y CARTO.
+- Cartografía base: teselas estándar de OpenStreetMap, sin clave API.
 - Densidad: `leaflet-heat`.
 - Detalle: un marcador circular por registro con coordenadas utilizables.
 - Los registros con coordenadas vacías o `0, 0` no aparecen en el mapa.
@@ -104,7 +104,7 @@ El HTML carga desde CDN:
 | chartjs-plugin-datalabels 2.0.0 | Etiquetas | Fijada |
 | Leaflet 1.9.4 | Mapa | Fijada |
 | Leaflet.heat | Capa de calor | No fijada en la URL actual |
-| CARTO/OSM | Teselas del mapa | Servicio externo |
+| OpenStreetMap | Teselas del mapa | Servicio externo sin clave API |
 | Google Fonts | Tipografía | Servicio externo |
 
 No hay instalación JavaScript local ni archivo de bloqueo. Un cambio incompatible o una indisponibilidad de CDN puede afectar el dashboard aunque los archivos del repositorio no cambien. Al modificar dependencias, se recomienda fijar versiones y comprobar consola, gráficos y mapa antes de publicar.
