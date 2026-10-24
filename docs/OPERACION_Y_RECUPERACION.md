@@ -35,6 +35,8 @@ Para comprobar la fuente sin reemplazar los archivos locales:
 python -m scripts.descargar_datos --dry-run
 ```
 
+Si la descarga falla por la red (por ejemplo, HTTP 403 o tiempo de espera), siga [Acceso bloqueado desde la red local](#acceso-bloqueado-desde-la-red-local).
+
 ### 3. Reconstruir y validar
 
 ```bash
@@ -73,11 +75,40 @@ Luego compruebe:
 - [El dashboard](https://jp1309.github.io/crimen/) carga sin errores.
 - [El CSV público](https://jp1309.github.io/crimen/homicidios_clean.csv) contiene la fecha máxima y el total esperados.
 
+## Acceso bloqueado desde la red local
+
+El portal puede rechazar ciertas redes (centros de datos, redes corporativas o rangos fuera de Ecuador) y la propia red local puede filtrar el dominio. Para identificar la capa que falla:
+
+```bash
+python -m scripts.diagnosticar_acceso
+```
+
+El script prueba DNS, TCP, TLS y HTTP con `urllib` y `curl` contra el portal, la API y la descarga del Excel anual, y termina con un diagnóstico. No modifica archivos.
+
+| Diagnóstico | Acción |
+|---|---|
+| La descarga funciona | Ejecutar el flujo normal |
+| El servidor responde 403 | Probar el portal en el navegador; si abre, usar la importación manual |
+| El proxy de la red no deja pasar | Política de la red local; usar otra red, por ejemplo el hotspot del celular |
+| DNS, TCP o TLS fallan | Red local, firewall o filtrado por país; usar otra red o una VPN con salida en Ecuador |
+
+### Importación manual de los dos Excel
+
+Cuando un navegador sí abre el [conjunto oficial](https://www.datosabiertos.gob.ec/dataset/homicidios-intencionales), o cuando otra persona con acceso descarga los archivos, descargue los dos XLSX primarios (el histórico con un rango de años en el nombre y el acumulado del año en curso), sin el diccionario `_dd_`, y sin cambiar sus nombres oficiales:
+
+```bash
+python -m scripts.descargar_datos \
+  --historico ~/Downloads/mdi_homicidiosintencionales_pm_2014_2025.xlsx \
+  --actual ~/Downloads/mdi_homicidiosintencionales_pm_2026_enero_septiembre.xlsx
+```
+
+La importación aplica los mismos controles que la descarga directa: tamaño mínimo, XLSX válido, tabla con `PROVINCIA`, comparación SHA-256, reemplazo atómico y manifiesto. Rechaza el diccionario de datos y los archivos intercambiados. El manifiesto registra `origin: importacion_manual` y deja `last_modified` vacío porque esa fecha solo la entrega la API. Después continúe con el paso 3 del flujo manual.
+
 ## Matriz de diagnóstico
 
 | Síntoma | Causa probable | Acción segura |
 |---|---|---|
-| HTTP 403 al consultar CKAN | El portal bloqueó temporalmente el acceso local | No sustituir la fuente ni usar proxies públicos; dejar el intento fallido para que la tarea local vuelva a consultar |
+| HTTP 403 al consultar CKAN | El portal o la red local bloquean el acceso | Ejecutar `python -m scripts.diagnosticar_acceso`; no usar proxies públicos. Si el navegador abre el portal, usar la importación manual |
 | Tiempo de espera o error DNS | Incidente transitorio de red o portal | Ejecutar `--dry-run` más tarde; no sustituir los XLSX manualmente |
 | Archivo menor a 50 KB o XLSX inválido | Respuesta HTML, descarga incompleta o formato oficial roto | Conservar las fuentes locales; inspeccionar la publicación y adaptar una prueba antes del código |
 | No se detecta una tabla con `PROVINCIA` | Cambió la hoja o la fila de encabezado | Revisar el Excel nuevo, ajustar la detección y agregar una prueba representativa |

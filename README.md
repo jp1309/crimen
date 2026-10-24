@@ -108,6 +108,18 @@ Para comprobar la fuente sin reemplazar archivos locales:
 python -m scripts.descargar_datos --dry-run
 ```
 
+Si la red local no puede descargar del portal:
+
+```bash
+# Identificar la capa que falla (DNS, TCP, TLS, proxy o HTTP 403)
+python -m scripts.diagnosticar_acceso
+
+# Importar los dos Excel descargados con el navegador, con los mismos controles
+python -m scripts.descargar_datos --historico RUTA_HISTORICO.xlsx --actual RUTA_ACTUAL.xlsx
+```
+
+El procedimiento completo está en [Operación y recuperación](docs/OPERACION_Y_RECUPERACION.md#acceso-bloqueado-desde-la-red-local).
+
 ## Estructura del proyecto
 
 ```text
@@ -129,13 +141,16 @@ crimen/
 ├── scripts/
 │   ├── configuracion.py
 │   ├── descargar_datos.py
+│   ├── diagnosticar_acceso.py
 │   ├── consolidar_y_limpiar.py
 │   ├── limpiar_datos.py
 │   ├── verificar_datos.py
 │   ├── verificar_coordenadas.py
 │   └── verificar_cantones.py
 ├── tests/
-│   └── test_descargar_datos.py
+│   ├── test_descargar_datos.py
+│   ├── test_diagnosticar_acceso.py
+│   └── test_verificar_publicacion.py
 ├── docs/
 │   ├── README.md
 │   ├── AUTOMATIZACION.md

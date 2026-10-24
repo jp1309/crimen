@@ -13,7 +13,7 @@ python -m scripts.verificar_coordenadas
 python -m unittest discover -v
 ```
 
-La fuente oficial es el conjunto [Homicidios Intencionales — Datos Abiertos Ecuador](https://www.datosabiertos.gob.ec/dataset/homicidios-intencionales). El sincronizador consulta su API, por lo que no se deben copiar ni renombrar manualmente los archivos publicados.
+La fuente oficial es el conjunto [Homicidios Intencionales — Datos Abiertos Ecuador](https://www.datosabiertos.gob.ec/dataset/homicidios-intencionales). El sincronizador consulta su API, por lo que no se deben copiar ni renombrar manualmente los archivos publicados en `data/raw/`. Si la red local bloquea el portal, use `python -m scripts.diagnosticar_acceso` y, cuando corresponda, la importación con `--historico` y `--actual` descrita en [Operación y recuperación](docs/OPERACION_Y_RECUPERACION.md#acceso-bloqueado-desde-la-red-local), que conserva todos los controles.
 
 ### Regla fundamental
 

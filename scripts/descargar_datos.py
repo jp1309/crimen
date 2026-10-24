@@ -7,6 +7,7 @@ anexa el ultimo mes: reemplaza el Excel anual completo despues de validarlo.
 Uso:
     python -m scripts.descargar_datos
     python -m scripts.descargar_datos --dry-run
+    python -m scripts.descargar_datos --historico RUTA.xlsx --actual RUTA.xlsx
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -188,6 +190,51 @@ def recursos_estables(manifest_path: Path = SOURCE_MANIFEST) -> dict[str, dict[s
     return resources
 
 
+def recursos_importados(
+    archivos: dict[str, Path], manifest_path: Path = SOURCE_MANIFEST
+) -> dict[str, dict[str, Any]]:
+    """Prepara los dos XLSX oficiales descargados manualmente desde el portal.
+
+    Se usa cuando la red local no puede automatizar la descarga pero un
+    navegador (u otra persona) si obtuvo los archivos publicados. Los archivos
+    pasan despues por las mismas validaciones que una descarga directa.
+    """
+
+    missing = sorted(set(CANONICAL_SOURCES) - set(archivos))
+    if missing:
+        raise SourceUpdateError(
+            "La importacion manual requiere ambas fuentes; falta: " + ", ".join(missing)
+        )
+
+    resources = recursos_estables(manifest_path)
+    for key, path in archivos.items():
+        path = Path(path)
+        name = path.name.lower()
+        if not path.is_file():
+            raise SourceUpdateError(f"No existe el archivo {path}")
+        if "_dd_" in name:
+            raise SourceUpdateError(f"{path.name} es el diccionario de datos, no la fuente {key}")
+        # Mismo criterio que clasificar_recursos: solo el historico declara
+        # un rango de anios en el nombre oficial.
+        if (key == "historico") != bool(YEAR_RANGE_RE.search(name)):
+            raise SourceUpdateError(
+                f"{path.name} no parece la fuente {key}; conserve el nombre oficial del "
+                "portal (el historico incluye un rango como 2014_2025)"
+            )
+        resources[key].update(name=path.name, last_modified=None)
+    return resources
+
+
+def _metadata_minima(resources: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "id": CKAN_DATASET_ID,
+        "name": "homicidios-intencionales",
+        "metadata_modified": None,
+        "update_frequency": ["Mensual"],
+        "resources": list(resources.values()),
+    }
+
+
 def descargar_archivo(url: str, destination: Path) -> None:
     """Descarga una URL por bloques, sin cargar todo el Excel en memoria."""
 
@@ -276,26 +323,26 @@ def sincronizar(
     raw_dir: Path = DATA_RAW,
     manifest_path: Path = SOURCE_MANIFEST,
     dry_run: bool = False,
+    archivos_locales: dict[str, Path] | None = None,
 ) -> tuple[bool, dict[str, Any]]:
-    """Descarga, valida y reemplaza atomicamente las fuentes que cambiaron."""
+    """Descarga (o importa), valida y reemplaza atomicamente las fuentes que cambiaron."""
 
-    try:
-        metadata = obtener_metadata(api_url)
-        resources = clasificar_recursos(metadata.get("resources") or [])
-    except SourceUpdateError as exc:
-        # Datos Abiertos puede responder 403 a la API JSON desde rangos de IP
-        # de GitHub Actions. Las URLs estables de los recursos siguen siendo la
-        # fuente oficial y el SHA-256 determina si hubo una publicacion nueva.
-        print(f"Advertencia: {exc}")
-        print("Se usaran las URLs estables de los recursos oficiales.")
-        resources = recursos_estables(manifest_path)
-        metadata = {
-            "id": CKAN_DATASET_ID,
-            "name": "homicidios-intencionales",
-            "metadata_modified": None,
-            "update_frequency": ["Mensual"],
-            "resources": list(resources.values()),
-        }
+    if archivos_locales is not None:
+        resources = recursos_importados(archivos_locales, manifest_path)
+        metadata = _metadata_minima(resources)
+    else:
+        try:
+            metadata = obtener_metadata(api_url)
+            resources = clasificar_recursos(metadata.get("resources") or [])
+        except SourceUpdateError as exc:
+            # Datos Abiertos puede responder 403 a la API JSON desde rangos de IP
+            # de GitHub Actions. Las URLs estables de los recursos siguen siendo la
+            # fuente oficial y el SHA-256 determina si hubo una publicacion nueva.
+            print(f"Advertencia: {exc}")
+            print("Se usaran las URLs estables de los recursos oficiales.")
+            resources = recursos_estables(manifest_path)
+            metadata = _metadata_minima(resources)
+    origin = "importacion_manual" if archivos_locales is not None else "descarga_directa"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     temporary: dict[str, Path] = {}
@@ -310,11 +357,15 @@ def sincronizar(
             os.close(handle)
             temp_path = Path(temp_name)
             temporary[key] = temp_path
-            print(f"Descargando {resource['name']}...")
             # Se descarga por ID estable. La URL continua funcionando cuando
             # CKAN reemplaza el nombre del Excel en una nueva publicacion.
             download_url = STABLE_RESOURCES[key]["url"]
-            descargar_archivo(download_url, temp_path)
+            if archivos_locales is not None:
+                print(f"Importando {resource['name']}...")
+                shutil.copyfile(archivos_locales[key], temp_path)
+            else:
+                print(f"Descargando {resource['name']}...")
+                descargar_archivo(download_url, temp_path)
             validation = validar_excel(temp_path)
             digest = sha256_file(temp_path)
             target = raw_dir / CANONICAL_SOURCES[key].name
@@ -364,6 +415,7 @@ def sincronizar(
                 "official_url": resource.get("url"),
                 "download_url": item["download_url"],
                 "last_modified": resource.get("last_modified"),
+                "origin": origin,
                 "local_path": target.relative_to(manifest_path.parent.parent).as_posix(),
                 "sha256": sha256_file(target),
                 "size": target.stat().st_size,
@@ -385,10 +437,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--api-url", default=CKAN_DATASET_API)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--github-output", help="Ruta de GITHUB_OUTPUT")
+    parser.add_argument(
+        "--historico", type=Path, help="XLSX historico descargado manualmente del portal"
+    )
+    parser.add_argument(
+        "--actual", type=Path, help="XLSX del anio en curso descargado manualmente del portal"
+    )
     args = parser.parse_args(argv)
+    if (args.historico is None) != (args.actual is None):
+        parser.error("--historico y --actual deben usarse juntos")
+    archivos_locales = (
+        {"historico": args.historico, "actual": args.actual} if args.actual else None
+    )
 
     try:
-        changed, metadata = sincronizar(api_url=args.api_url, dry_run=args.dry_run)
+        changed, metadata = sincronizar(
+            api_url=args.api_url, dry_run=args.dry_run, archivos_locales=archivos_locales
+        )
         current_id = STABLE_RESOURCES["actual"]["id"]
         current_resource = next(
             (

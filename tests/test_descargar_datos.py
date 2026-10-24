@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 import shutil
@@ -13,6 +14,7 @@ from scripts.descargar_datos import (
     SourceUpdateError,
     clasificar_recursos,
     recursos_estables,
+    recursos_importados,
     sha256_file,
     sincronizar,
     validar_excel,
@@ -151,6 +153,72 @@ class AccumulatedReplacementTests(unittest.TestCase):
                 ("AZUAY", "CUENCA", "2026-03-01"),
             ])
             self.assertEqual(first_manifest_hash, sha256_file(manifest))
+
+
+class ManualImportTests(unittest.TestCase):
+    HISTORICAL = "mdi_homicidiosintencionales_pm_2014_2025.xlsx"
+    CURRENT = "mdi_homicidiosintencionales_pm_2026_enero_septiembre.xlsx"
+
+    def test_rejects_dictionary_swapped_or_incomplete_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            for name in (self.HISTORICAL, self.CURRENT, "mdi_homicidios_intencionales_dd_2026.xlsx"):
+                (folder / name).write_bytes(b"x")
+            manifest = folder / "missing-manifest.json"
+
+            cases = [
+                {"historico": folder / self.HISTORICAL},
+                {"historico": folder / self.CURRENT, "actual": folder / self.HISTORICAL},
+                {
+                    "historico": folder / self.HISTORICAL,
+                    "actual": folder / "mdi_homicidios_intencionales_dd_2026.xlsx",
+                },
+                {"historico": folder / self.HISTORICAL, "actual": folder / "no-existe.xlsx"},
+            ]
+            for archivos in cases:
+                with self.subTest(archivos=archivos), self.assertRaises(SourceUpdateError):
+                    recursos_importados(archivos, manifest)
+
+    def test_imports_without_network_and_second_run_is_noop(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            raw_dir = project / "data" / "raw"
+            manifest = project / "data" / "source_manifest.json"
+            archivos = {
+                "historico": project / self.HISTORICAL,
+                "actual": project / self.CURRENT,
+            }
+            AccumulatedReplacementTests._workbook(
+                archivos["historico"], [("PICHINCHA", "QUITO", "2025-01-01")]
+            )
+            AccumulatedReplacementTests._workbook(
+                archivos["actual"], [("GUAYAS", "GUAYAQUIL", "2026-09-01")]
+            )
+
+            with (
+                patch("scripts.descargar_datos.obtener_metadata", side_effect=AssertionError),
+                patch("scripts.descargar_datos.descargar_archivo", side_effect=AssertionError),
+                patch("scripts.descargar_datos.MIN_XLSX_SIZE", 100),
+            ):
+                changed, _ = sincronizar(
+                    raw_dir=raw_dir, manifest_path=manifest, archivos_locales=archivos
+                )
+                changed_again, _ = sincronizar(
+                    raw_dir=raw_dir, manifest_path=manifest, archivos_locales=archivos
+                )
+
+            resources = json.loads(manifest.read_text(encoding="utf-8"))["resources"]
+            self.assertTrue(changed)
+            self.assertFalse(changed_again)
+            self.assertEqual(resources["actual"]["origin"], "importacion_manual")
+            self.assertEqual(resources["actual"]["official_name"], self.CURRENT)
+            self.assertEqual(
+                resources["actual"]["resource_id"], STABLE_RESOURCES["actual"]["id"]
+            )
+            self.assertEqual(
+                sha256_file(raw_dir / "mdi_homicidios_intencionales_pm_actual.xlsx"),
+                sha256_file(archivos["actual"]),
+            )
 
 
 if __name__ == "__main__":
