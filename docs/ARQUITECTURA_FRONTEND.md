@@ -103,7 +103,7 @@ El HTML carga desde CDN:
 | Chart.js | Gráficos | No fijada en la URL actual |
 | chartjs-plugin-datalabels 2.0.0 | Etiquetas | Fijada |
 | Leaflet 1.9.4 | Mapa | Fijada |
-| Leaflet.heat | Capa de calor | No fijada en la URL actual |
+| Leaflet.heat 0.2.0 | Capa de calor | Fijada; expone `L.heatLayer` en el navegador |
 | OpenStreetMap | Teselas del mapa | Servicio externo sin clave API |
 | Google Fonts | Tipografía | Servicio externo |
 
